@@ -1,0 +1,19 @@
+{
+  "name": "claude-channel-whatsapp",
+  "version": "0.0.1",
+  "description": "WhatsApp channel for Claude Code — messaging bridge using Baileys with built-in access control",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": "./server.ts",
+  "scripts": {
+    "start": "bun install --no-summary && bun server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@whiskeysockets/baileys": "^7.0.0",
+    "pino": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10"
+  }
+}
