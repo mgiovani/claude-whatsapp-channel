@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node --experimental-strip-types
 /**
  * WhatsApp channel for Claude Code.
  *
@@ -19,14 +19,12 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
-import makeWASocket, {
-  DisconnectReason,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  downloadMediaMessage,
-  Browsers,
-  type WASocket,
-} from '@whiskeysockets/baileys'
+import * as _baileys from '@whiskeysockets/baileys'
+// CJS/ESM interop: Node.js wraps CJS modules — default export is makeWASocket,
+// named exports are available on the namespace object.
+const makeWASocket = (_baileys as any).default as typeof _baileys.default
+const { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, downloadMediaMessage } = _baileys
+type WASocket = ReturnType<typeof makeWASocket>
 import { randomBytes } from 'crypto'
 import {
   readFileSync,
@@ -176,7 +174,7 @@ function pruneExpired(a: Access): boolean {
 // gate would deliver from. For DMs, allowFrom stores the full JID.
 function assertAllowedChat(chat_id: string): void {
   const access = loadAccess()
-  if (access.allowFrom.includes(chat_id)) return
+  if (jidListIncludes(access.allowFrom, chat_id)) return
   if (chat_id in access.groups) return
   throw new Error(`chat ${chat_id} is not allowlisted — add via /whatsapp:access`)
 }
@@ -200,12 +198,12 @@ function gate(
 
   if (chatType === 'private') {
     if (access.dmPolicy === 'disabled') return { action: 'drop' }
-    if (access.allowFrom.includes(senderId)) return { action: 'deliver', access }
+    if (jidListIncludes(access.allowFrom, senderId)) return { action: 'deliver', access }
     if (access.dmPolicy === 'allowlist') return { action: 'drop' }
 
     // pairing mode — check for existing non-expired code for this sender
     for (const [code, p] of Object.entries(access.pending)) {
-      if (p.senderId === senderId) {
+      if (jidMatch(p.senderId, senderId)) {
         if ((p.replies ?? 1) >= 2) return { action: 'drop' }
         p.replies = (p.replies ?? 1) + 1
         saveAccess(access)
@@ -233,7 +231,7 @@ function gate(
     if (!policy) return { action: 'drop' }
     const groupAllowFrom = policy.allowFrom ?? []
     const requireMention = policy.requireMention ?? true
-    if (groupAllowFrom.length > 0 && !groupAllowFrom.includes(senderId)) {
+    if (groupAllowFrom.length > 0 && !jidListIncludes(groupAllowFrom, senderId)) {
       return { action: 'drop' }
     }
     if (requireMention && !mentionedMe) return { action: 'drop' }
@@ -332,7 +330,7 @@ async function connectWhatsApp(): Promise<void> {
     version,
     auth: state,
     printQRInTerminal: false,
-    browser: Browsers.macOS('Chrome'), // Required for pairing code flow.
+    browser: ['Claude Code', 'Chrome', '1.0.0'],
     markOnlineOnConnect: false,        // Don't suppress phone notifications.
     logger,
     cachedGroupMetadata: async () => null,
@@ -385,9 +383,15 @@ async function connectWhatsApp(): Promise<void> {
 
       if (statusCode === DisconnectReason.loggedOut) {
         writeFileSync(STATUS_FILE, 'logged_out')
-        process.stderr.write('whatsapp channel: logged out — re-run /whatsapp:configure qr to re-link\n')
+        process.stderr.write('whatsapp channel: logged out — clearing auth and generating new QR\n')
         // Clear auth so next connect generates a fresh QR.
         try { rmSync(AUTH_DIR, { recursive: true, force: true }) } catch {}
+        // Auto-reconnect to generate fresh QR codes (no manual restart needed).
+        setTimeout(() => {
+          connectWhatsApp().catch(err =>
+            process.stderr.write(`whatsapp channel: reconnect after logout failed: ${err}\n`),
+          )
+        }, 2000)
         return
       }
 
@@ -395,6 +399,10 @@ async function connectWhatsApp(): Promise<void> {
 
       const reason = DisconnectReason[statusCode as keyof typeof DisconnectReason] ?? String(statusCode)
       writeFileSync(STATUS_FILE, `disconnected:${reason}`)
+
+      if (statusCode === DisconnectReason.connectionReplaced) {
+        process.stderr.write('whatsapp channel: connection replaced by another session\n')
+      }
 
       const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30_000)
       process.stderr.write(
@@ -419,6 +427,7 @@ async function connectWhatsApp(): Promise<void> {
       )
     }
   })
+
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -432,6 +441,26 @@ function safeName(s: string | undefined): string | undefined {
 function bareJid(jid: string): string {
   const parts = jid.split('@')
   return parts[0].split(':')[0] + '@' + (parts[1] ?? '')
+}
+
+// Extract the numeric phone prefix from a JID, ignoring domain (@s.whatsapp.net
+// vs @lid) and device suffixes (:0, :1).  Two JIDs match if their phone parts match.
+// This is necessary because Baileys v7 can deliver the same user as either
+// "num@s.whatsapp.net" or "num@lid" depending on the message type.
+function jidPhone(jid: string): string {
+  return jid.split('@')[0].split(':')[0]
+}
+
+// Check whether two JIDs refer to the same user (same phone number, ignoring
+// domain differences like @lid vs @s.whatsapp.net and device suffixes).
+function jidMatch(a: string, b: string): boolean {
+  return jidPhone(a) === jidPhone(b)
+}
+
+// Check whether a list of JIDs contains one matching a given JID (normalised).
+function jidListIncludes(list: string[], jid: string): boolean {
+  const phone = jidPhone(jid)
+  return list.some(j => jidPhone(j) === phone)
 }
 
 // Extract plain text from any WhatsApp message variant.
@@ -882,6 +911,8 @@ process.on('SIGINT', shutdown)
 await mcp.connect(new StdioServerTransport())
 
 mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+// Clean stale QR from previous session — prevents showing an expired code.
+try { rmSync(QR_FILE, { force: true }) } catch {}
 process.stderr.write('whatsapp channel: starting\n')
 
 connectWhatsApp().catch(err =>

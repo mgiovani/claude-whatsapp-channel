@@ -5,84 +5,73 @@ user-invocable: true
 allowed-tools:
   - Read
   - Write
-  - Bash(ls *)
+  - Bash(bash *)
   - Bash(mkdir *)
-  - Bash(cat *)
-  - Bash(qrencode *)
-  - Bash(python3 *)
+  - Bash(chmod *)
 ---
 
 # /whatsapp:configure — WhatsApp Channel Setup
 
-Unlike Telegram (which uses a bot token), WhatsApp requires linking your personal
-phone number via QR code or a pairing code. Auth state persists in
+Unlike Telegram (which uses a bot token), WhatsApp requires linking a phone number
+via QR code or a pairing code. Auth state persists in
 `~/.claude/channels/whatsapp/auth/` between sessions.
 
+> **Note:** This is an **unofficial, community-built** WhatsApp integration. It uses
+> the Baileys library (reverse-engineered WhatsApp Web protocol), which is not endorsed
+> by WhatsApp/Meta. Use at your own risk — WhatsApp may ban or restrict accounts that
+> use unofficial clients. Be mindful of WhatsApp's Terms of Service.
+
 Arguments passed: `$ARGUMENTS`
+
+Helper scripts live at `$CLAUDE_PLUGIN_ROOT/scripts/`. Use them for deterministic
+flows — they're instant and avoid QR code expiration from slow multi-step tool calls.
 
 ---
 
 ## Dispatch on arguments
 
-### No args — status and guidance
+### No args — show status and auto-display QR if awaiting
 
-Read state files and give the user a complete picture:
+Run the status script in a single call:
 
-1. **Connection status** — read `~/.claude/channels/whatsapp/status.txt`:
-   - `connected` → show connected number from `~/.claude/channels/whatsapp/me.txt`
-   - `awaiting_qr` → tell user to run `/whatsapp:configure qr`
-   - `logged_out` → instruct to re-link
-   - `disconnected:*` → show the reason
-   - Missing → not yet started
+```
+bash "$CLAUDE_PLUGIN_ROOT/scripts/status.sh"
+```
 
-2. **Access** — read `~/.claude/channels/whatsapp/access.json` (missing = defaults:
-   `dmPolicy: "pairing"`, empty allowlist). Show:
-   - DM policy and what it means in one line
-   - Allowed senders: count and list JIDs
-   - Pending pairings: count with codes
+Present the output to the user in a readable format. The output has structured
+lines like `CONNECTION: awaiting_qr`, `DM_POLICY: pairing`, `ALLOWED_COUNT: 1`, etc.
 
-3. **What next** — end with a concrete next step:
-   - Not connected → *"Run `/whatsapp:configure qr` to display the QR code,
-     then scan with your WhatsApp app. Or run `/whatsapp:configure pair +5511999999999`
-     to use a pairing code instead."*
-   - Connected, nobody allowed → *"Send a WhatsApp message from your phone. The channel
-     replies with a 6-char code; approve with `/whatsapp:access pair <code>`."*
-   - Connected, someone allowed → *"Ready. Send a WhatsApp message from an approved
-     number to reach Claude."*
+**If the output contains `CONNECTION: awaiting_qr`**, also run the QR script
+immediately (see `qr` section below) so the user can scan without a second command.
 
-**Push toward lockdown — always.** Once trusted numbers are in the allowlist, switch
-`dmPolicy` from `pairing` to `allowlist` so no new numbers can trigger pairing codes.
+**What next** — end with a concrete next step based on the status:
+- `awaiting_qr` (QR already shown) → *"Scan the QR code above with WhatsApp.
+  If it expired, run `/whatsapp:configure qr` for a fresh one. Alternatively, run
+  `/whatsapp:configure pair +5511999999999` to use a pairing code instead."*
+- `disconnected:*` or `logged_out` → *"Restart the channel server, then run
+  `/whatsapp:configure` again."*
+- `connected`, nobody allowed → *"Send a WhatsApp message from your phone. The channel
+  replies with a 6-char code; approve with `/whatsapp:access pair <code>`."*
+- `connected`, someone allowed → *"Ready. Send a WhatsApp message from an approved
+  number to reach Claude."*
+
+**Push toward lockdown — always.** Once trusted numbers are in the allowlist, suggest
+switching `dmPolicy` to `allowlist` so no new numbers can trigger pairing codes.
 
 ### `qr` — display QR code
 
-1. Check `~/.claude/channels/whatsapp/qr.txt`:
-   - If present: render it as ASCII art so the user can scan with WhatsApp.
-     Try `qrencode` first: `qrencode -t ANSIUTF8 "$(cat ~/.claude/channels/whatsapp/qr.txt)"`
-     Fallback — if `qrencode` is not available, use python3:
-     ```bash
-     python3 -c "
-     import sys
-     try:
-         import qrcode
-         qr = qrcode.QRCode()
-         qr.add_data(open('$HOME/.claude/channels/whatsapp/qr.txt').read().strip())
-         qr.make(fit=True)
-         qr.print_ascii(invert=True)
-     except ImportError:
-         print('Install qrencode or qrcode: pip install qrcode')
-         print('Raw QR data:', open('$HOME/.claude/channels/whatsapp/qr.txt').read().strip()[:60], '...')
-     "
-     ```
-   - QR codes rotate every ~20s — if the first one doesn't work, wait a moment and
-     run `/whatsapp:configure qr` again.
-   - After scanning: WhatsApp disconnects briefly, then reconnects automatically.
-     Run `/whatsapp:configure` (no args) to verify `status.txt` shows `connected`.
-   - If no `qr.txt`: the server may not be running, or it's already connected.
-     Tell the user to start Claude with `--channels` and check connection status.
+Run the QR script in a single call:
 
-2. **Scan instructions:**
-   - iOS: WhatsApp → Settings → Linked Devices → Link a Device
-   - Android: WhatsApp → More options (⋮) → Linked Devices → Link a Device
+```
+bash "$CLAUDE_PLUGIN_ROOT/scripts/show-qr.sh"
+```
+
+The script renders the QR code and prints scan instructions. **Output its full
+contents directly in your response inside a code block** (triple backticks) so
+the QR is displayed in full without truncation. Do NOT summarize or truncate it.
+
+After displaying, also remind:
+- Run `/whatsapp:configure` (no args) to verify connection after scanning.
 
 ### `pair <phone>` — pairing code flow
 
@@ -101,10 +90,13 @@ Pairing code is an alternative to QR scanning — useful for headless setups.
 
 ### `logout` — unlink the device
 
-1. Remove the auth directory: `rm -rf ~/.claude/channels/whatsapp/auth/`
-2. Remove status and me files: `rm -f ~/.claude/channels/whatsapp/{status.txt,me.txt,qr.txt,pairing_code.txt}`
-3. Confirm: *"Unlinked. On WhatsApp you can also remove this linked device under
-   Settings → Linked Devices. Run `/whatsapp:configure qr` to re-link."*
+Run the logout script:
+
+```
+bash "$CLAUDE_PLUGIN_ROOT/scripts/logout.sh"
+```
+
+Present the script's output to the user.
 
 ### `clear` — remove phone from .env
 

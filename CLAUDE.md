@@ -4,8 +4,8 @@ WhatsApp channel plugin for Claude Code, built with Baileys.
 
 ## Stack
 
-- **Runtime**: Bun
-- **Language**: TypeScript (single-file, no build step)
+- **Runtime**: Node.js (Baileys requires full `ws` WebSocket support — Bun lacks `upgrade`/`unexpected-response` events)
+- **Language**: TypeScript (single-file, `--experimental-strip-types`, no build step)
 - **WhatsApp**: `@whiskeysockets/baileys` v7 (WhatsApp Web multi-device)
 - **MCP**: `@modelcontextprotocol/sdk`
 - **Architecture**: Mirrors the official `telegram` and `discord` channels from `anthropics/claude-plugins-official`
