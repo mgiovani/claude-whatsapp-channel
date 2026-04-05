@@ -506,6 +506,9 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         assertAllowedChat(chat_id)
         await waitForConnection()
 
+        // Clear the typing indicator before sending.
+        void sock!.sendPresenceUpdate('paused', chat_id).catch(() => {})
+
         for (const f of files) {
           assertSendable(f, STATE_DIR)
           const st = statSync(f)
@@ -782,6 +785,9 @@ async function handleInbound(msg: any): Promise<void> {
   if (access.ackReaction) {
     void sock!.sendMessage(chatId, { react: { text: access.ackReaction, key: msg.key } }).catch(() => {})
   }
+
+  // Show typing indicator so the user knows the message landed. Fire-and-forget.
+  void sock!.sendPresenceUpdate('composing', chatId).catch(() => {})
 
   const text = extractText(msg)
   const kind = getMediaKind(msg)
