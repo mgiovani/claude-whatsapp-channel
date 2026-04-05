@@ -744,7 +744,8 @@ async function handleInbound(msg: any): Promise<void> {
   const chatType: 'private' | 'group' = isGroup ? 'group' : 'private'
 
   const mentionedMe = isGroup ? isMentioned(msg) : false
-  const result = gate(senderId, chatType, chatId, mentionedMe, { load: loadAccess, save: saveAccess })
+  const result = gate(senderId, chatType, chatId, mentionedMe, { load: loadAccess, save: saveAccess },
+    (lid) => lidToPhone.get(lid))
 
   if (result.action === 'drop') {
     if (result.reason) process.stderr.write(`whatsapp channel: dropped message from ${senderId}: ${result.reason}\n`)

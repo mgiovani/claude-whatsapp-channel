@@ -232,12 +232,16 @@ export function assertSendable(f: string, stateDir: string): void {
 //
 // accessIO is injected so gate() can be tested without touching the filesystem.
 // In production (server.ts), pass { load: loadAccess, save: saveAccess }.
+// resolveJid is optional: maps a LID JID to its phone JID. Used to detect when
+// a LID sender is already in allowFrom under their phone JID (cache may be empty
+// on reconnect and remoteJidAlt may be absent from the message key).
 export function gate(
   senderId: string,
   chatType: 'private' | 'group',
   chatId: string,
   mentionedMe: boolean,
   accessIO: { load: () => Access; save: (a: Access) => void },
+  resolveJid?: (lid: string) => string | undefined,
 ): GateResult {
   const access = accessIO.load()
   const pruned = pruneExpired(access)
@@ -246,6 +250,13 @@ export function gate(
   if (chatType === 'private') {
     if (access.dmPolicy === 'disabled') return { action: 'drop', reason: 'disabled' }
     if (jidListIncludes(access.allowFrom, senderId)) return { action: 'deliver', access }
+    // If senderId is a LID and we have a resolver, check if its phone JID is allowed.
+    // This handles reconnect scenarios where the in-memory LID→phone cache is empty
+    // and remoteJidAlt was absent from the message key.
+    if (isLidJid(senderId) && resolveJid) {
+      const phoneJid = resolveJid(senderId)
+      if (phoneJid && jidListIncludes(access.allowFrom, phoneJid)) return { action: 'deliver', access }
+    }
     if (access.dmPolicy === 'allowlist') return { action: 'drop', reason: `not in allowlist (allowFrom=${JSON.stringify(access.allowFrom)})` }
 
     // pairing mode — check for existing non-expired code for this sender
