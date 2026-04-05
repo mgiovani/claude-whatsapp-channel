@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test'
 import {
   safeName,
   bareJid,
+  isLidJid,
   jidPhone,
   jidMatch,
   jidListIncludes,
@@ -102,18 +103,39 @@ describe('jidPhone', () => {
   })
 })
 
+// ─── isLidJid ─────────────────────────────────────────────────────────────────
+
+describe('isLidJid', () => {
+  test('returns true for @lid JID', () => {
+    expect(isLidJid('6141853589608@lid')).toBe(true)
+  })
+
+  test('returns false for @s.whatsapp.net JID', () => {
+    expect(isLidJid('5511999999999@s.whatsapp.net')).toBe(false)
+  })
+
+  test('returns false for group JID', () => {
+    expect(isLidJid('120363xxxxxxx@g.us')).toBe(false)
+  })
+})
+
 // ─── jidMatch ─────────────────────────────────────────────────────────────────
 
 describe('jidMatch', () => {
-  test('matches same phone on different domains', () => {
-    expect(jidMatch('5511999@s.whatsapp.net', '5511999@lid')).toBe(true)
+  test('does NOT match same numeric part across different domains (LID ≠ phone)', () => {
+    // LID numbers are internal identifiers unrelated to phone numbers
+    expect(jidMatch('5511999@s.whatsapp.net', '5511999@lid')).toBe(false)
   })
 
-  test('matches same phone with device suffix', () => {
-    expect(jidMatch('5511999@s.whatsapp.net:0', '5511999@s.whatsapp.net')).toBe(true)
+  test('matches same phone JID with device suffix', () => {
+    expect(jidMatch('5511999:0@s.whatsapp.net', '5511999@s.whatsapp.net')).toBe(true)
   })
 
-  test('rejects different phone numbers', () => {
+  test('matches same LID JID with device suffix', () => {
+    expect(jidMatch('6141853:0@lid', '6141853@lid')).toBe(true)
+  })
+
+  test('rejects different phone numbers on same domain', () => {
     expect(jidMatch('5511111@s.whatsapp.net', '5511222@s.whatsapp.net')).toBe(false)
   })
 })
@@ -121,9 +143,10 @@ describe('jidMatch', () => {
 // ─── jidListIncludes ──────────────────────────────────────────────────────────
 
 describe('jidListIncludes', () => {
-  test('finds a match when domains differ', () => {
+  test('does NOT match across @lid and @s.whatsapp.net domains', () => {
+    // LID numbers are not phone numbers — cross-domain match would be incorrect
     const list = ['5511999@s.whatsapp.net']
-    expect(jidListIncludes(list, '5511999@lid')).toBe(true)
+    expect(jidListIncludes(list, '5511999@lid')).toBe(false)
   })
 
   test('returns false for empty list', () => {
@@ -137,7 +160,7 @@ describe('jidListIncludes', () => {
 
   test('finds match with device suffix', () => {
     const list = ['5511999@s.whatsapp.net']
-    expect(jidListIncludes(list, '5511999@s.whatsapp.net:0')).toBe(true)
+    expect(jidListIncludes(list, '5511999:0@s.whatsapp.net')).toBe(true)
   })
 })
 
@@ -383,9 +406,18 @@ describe('gate — DM policy: allowlist', () => {
     expect(result.action).toBe('drop')
   })
 
-  test('matches across @lid and @s.whatsapp.net domains', () => {
+  test('drops LID sender not in allowlist (LID ≠ phone — resolution must happen upstream)', () => {
+    // resolvePhoneJid() in server.ts converts LID to phone before calling gate().
+    // If an unresolved LID reaches gate(), it correctly drops it.
     const { io } = makeIO({ dmPolicy: 'allowlist', allowFrom: ['5511999@s.whatsapp.net'] })
     const result = gate('5511999@lid', 'private', '5511999@lid', false, io)
+    expect(result.action).toBe('drop')
+  })
+
+  test('delivers LID sender when LID is directly in allowFrom', () => {
+    // If the allowlist was built from a LID pairing, same-LID messages still deliver.
+    const { io } = makeIO({ dmPolicy: 'allowlist', allowFrom: ['6141853589608@lid'] })
+    const result = gate('6141853589608@lid', 'private', '6141853589608@lid', false, io)
     expect(result.action).toBe('deliver')
   })
 })
@@ -452,14 +484,27 @@ describe('gate — DM policy: pairing', () => {
     expect(result.action).toBe('drop')
   })
 
-  test('matches sender across @lid and @s.whatsapp.net for existing pending entry', () => {
+  test('creates new pairing for LID sender when pending entry is phone-based (no cross-domain match)', () => {
+    // LID and phone JIDs are different identity spaces. A LID sender will not match
+    // a phone-based pending entry — resolvePhoneJid() must resolve LIDs before gate().
     const { io } = makeIO({
       dmPolicy: 'pairing',
       pending: {
         'abc123': { senderId: '5511@s.whatsapp.net', chatId: '5511@s.whatsapp.net', createdAt: Date.now(), expiresAt: FUTURE, replies: 1 },
       },
     })
-    // Sender arrives as @lid but stored as @s.whatsapp.net — should match
+    const result = gate('5511@lid', 'private', '5511@lid', false, io)
+    expect(result.action).toBe('pair')
+    if (result.action === 'pair') expect(result.isResend).toBe(false) // creates new, doesn't match existing
+  })
+
+  test('matches sender for existing pending entry (same domain)', () => {
+    const { io } = makeIO({
+      dmPolicy: 'pairing',
+      pending: {
+        'abc123': { senderId: '5511@lid', chatId: '5511@lid', createdAt: Date.now(), expiresAt: FUTURE, replies: 1 },
+      },
+    })
     const result = gate('5511@lid', 'private', '5511@lid', false, io)
     expect(result.action).toBe('pair')
     if (result.action === 'pair') expect(result.isResend).toBe(true)

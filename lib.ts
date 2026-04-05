@@ -39,7 +39,7 @@ export type Access = {
 
 export type GateResult =
   | { action: 'deliver'; access: Access }
-  | { action: 'drop' }
+  | { action: 'drop'; reason?: string }
   | { action: 'pair'; code: string; isResend: boolean; pendingEntry: PendingEntry; access: Access }
 
 export type MediaKind = 'image' | 'video' | 'audio' | 'document' | 'sticker'
@@ -88,22 +88,30 @@ export function bareJid(jid: string): string {
   return parts[0].split(':')[0] + '@' + (parts[1] ?? '')
 }
 
-// Extract the numeric phone prefix from a JID, ignoring domain (@s.whatsapp.net
-// vs @lid) and device suffixes (:0, :1). Two JIDs match if their phone parts match.
+// Returns true if the JID is in LID format (@lid domain).
+// LID numbers are internal WhatsApp identifiers, NOT phone numbers.
+export function isLidJid(jid: string): boolean {
+  return jid.endsWith('@lid')
+}
+
+// Extract the numeric phone prefix from a JID.
+// NOTE: Only use this for display purposes. For identity comparisons,
+// use jidMatch() / jidListIncludes() which are domain-aware.
 export function jidPhone(jid: string): string {
   return jid.split('@')[0].split(':')[0]
 }
 
-// Check whether two JIDs refer to the same user (same phone number, ignoring
-// domain differences like @lid vs @s.whatsapp.net and device suffixes).
+// Check whether two JIDs refer to the same user. Domain-aware: @lid and
+// @s.whatsapp.net are different identity spaces and never match each other
+// even if the numeric parts happen to be equal.
 export function jidMatch(a: string, b: string): boolean {
-  return jidPhone(a) === jidPhone(b)
+  return bareJid(a) === bareJid(b)
 }
 
-// Check whether a list of JIDs contains one matching a given JID (normalised).
+// Check whether a list of JIDs contains one matching a given JID.
 export function jidListIncludes(list: string[], jid: string): boolean {
-  const phone = jidPhone(jid)
-  return list.some(j => jidPhone(j) === phone)
+  const norm = bareJid(jid)
+  return list.some(j => bareJid(j) === norm)
 }
 
 // ─── Message helpers ──────────────────────────────────────────────────────────
@@ -220,9 +228,9 @@ export function gate(
   if (pruned) accessIO.save(access)
 
   if (chatType === 'private') {
-    if (access.dmPolicy === 'disabled') return { action: 'drop' }
+    if (access.dmPolicy === 'disabled') return { action: 'drop', reason: 'disabled' }
     if (jidListIncludes(access.allowFrom, senderId)) return { action: 'deliver', access }
-    if (access.dmPolicy === 'allowlist') return { action: 'drop' }
+    if (access.dmPolicy === 'allowlist') return { action: 'drop', reason: `not in allowlist (allowFrom=${JSON.stringify(access.allowFrom)})` }
 
     // pairing mode — check for existing non-expired code for this sender
     for (const [code, p] of Object.entries(access.pending)) {
