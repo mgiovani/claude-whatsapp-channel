@@ -182,7 +182,7 @@ function assertAllowedChat(chat_id: string): void {
 type GateResult =
   | { action: 'deliver'; access: Access }
   | { action: 'drop' }
-  | { action: 'pair'; code: string; isResend: boolean }
+  | { action: 'pair'; code: string; isResend: boolean; pendingEntry: PendingEntry; access: Access }
 
 // gate() operates on normalised WhatsApp JIDs.
 // DM JIDs: <phone>@s.whatsapp.net  Group JIDs: <id>@g.us
@@ -204,10 +204,10 @@ function gate(
     // pairing mode — check for existing non-expired code for this sender
     for (const [code, p] of Object.entries(access.pending)) {
       if (jidMatch(p.senderId, senderId)) {
-        if ((p.replies ?? 1) >= 2) return { action: 'drop' }
-        p.replies = (p.replies ?? 1) + 1
-        saveAccess(access)
-        return { action: 'pair', code, isResend: true }
+        // replies is incremented by the caller only after a successful send,
+        // so that a failed delivery (connection down) doesn't eat up retries.
+        if ((p.replies ?? 1) >= 3) return { action: 'drop' }
+        return { action: 'pair', code, isResend: true, pendingEntry: p, access }
       }
     }
     // Cap pending at 3. Extra attempts are silently dropped.
@@ -215,15 +215,16 @@ function gate(
 
     const code = randomBytes(3).toString('hex') // 6 hex chars
     const now = Date.now()
-    access.pending[code] = {
+    const pendingEntry: PendingEntry = {
       senderId,
       chatId,
       createdAt: now,
       expiresAt: now + 60 * 60 * 1000, // 1h
       replies: 1,
     }
+    access.pending[code] = pendingEntry
     saveAccess(access)
-    return { action: 'pair', code, isResend: false }
+    return { action: 'pair', code, isResend: false, pendingEntry, access }
   }
 
   if (chatType === 'group') {
@@ -814,6 +815,13 @@ async function handleInbound(msg: any): Promise<void> {
       await sock!.sendMessage(chatId, {
         text: `${lead} — run in Claude Code:\n\n/whatsapp:access pair ${result.code}`,
       })
+      // Only count a delivery attempt after the send succeeds. If the connection
+      // is down and sendMessage throws, we don't increment — so the next message
+      // from this sender will retry instead of being silently dropped.
+      if (result.isResend) {
+        result.pendingEntry.replies = (result.pendingEntry.replies ?? 1) + 1
+        saveAccess(result.access)
+      }
     } catch (err) {
       process.stderr.write(`whatsapp channel: failed to send pairing code: ${err}\n`)
     }
