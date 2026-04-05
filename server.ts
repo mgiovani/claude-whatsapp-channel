@@ -24,7 +24,7 @@ import * as _baileys from '@whiskeysockets/baileys'
 // CJS/ESM interop: Node.js wraps CJS modules — default export is makeWASocket,
 // named exports are available on the namespace object.
 const makeWASocket = (_baileys as any).default as typeof _baileys.default
-const { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, downloadMediaMessage } = _baileys
+const { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, downloadMediaMessage, makeCacheableSignalKeyStore } = _baileys
 type WASocket = ReturnType<typeof makeWASocket>
 import {
   readFileSync,
@@ -199,6 +199,7 @@ setInterval(checkApprovals, 5000).unref()
 let sock: WASocket | null = null
 let isConnected = false
 let reconnectAttempt = 0
+let replaceCount = 0
 let shuttingDown = false
 
 // Recent inbound messages — needed for media download, reactions, and quoting.
@@ -228,8 +229,17 @@ async function safeSend(jid: string, text: string): Promise<void> {
   await sock!.sendMessage(jid, { text })
 }
 
+function teardownSocket(): void {
+  if (!sock) return
+  sock.ev.removeAllListeners()
+  try { sock.end(undefined) } catch {}
+  sock = null
+  isConnected = false
+}
+
 async function connectWhatsApp(): Promise<void> {
   if (shuttingDown) return
+  teardownSocket()
   mkdirSync(AUTH_DIR, { recursive: true, mode: 0o700 })
 
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
@@ -239,7 +249,10 @@ async function connectWhatsApp(): Promise<void> {
 
   sock = makeWASocket({
     version,
-    auth: state,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
     printQRInTerminal: false,
     browser: ['Claude Code', 'Chrome', '1.0.0'],
     markOnlineOnConnect: false,        // Don't suppress phone notifications.
@@ -311,6 +324,7 @@ async function connectWhatsApp(): Promise<void> {
     if (connection === 'open') {
       isConnected = true
       reconnectAttempt = 0
+      replaceCount = 0
       const myJid = sock!.user?.id ?? ''
       mkdirSync(STATE_DIR, { recursive: true })
       writeFileSync(ME_FILE, myJid)
@@ -344,13 +358,20 @@ async function connectWhatsApp(): Promise<void> {
       writeFileSync(STATUS_FILE, `disconnected:${reason}`)
 
       if (statusCode === DisconnectReason.connectionReplaced) {
-        process.stderr.write('whatsapp channel: connection replaced — reconnecting in 1s\n')
-        reconnectAttempt = 0 // Reset backoff — this is transient, not a persistent failure.
+        replaceCount++
+        if (replaceCount >= 3) {
+          process.stderr.write(
+            'whatsapp channel: connection replaced 3 times consecutively — stopping reconnect (likely another active session)\n',
+          )
+          return
+        }
+        process.stderr.write(`whatsapp channel: connection replaced — reconnecting in 3s (attempt ${replaceCount}/3)\n`)
+        reconnectAttempt = 0
         setTimeout(() => {
           connectWhatsApp().catch(err =>
             process.stderr.write(`whatsapp channel: reconnect after replace failed: ${err}\n`),
           )
-        }, 1000)
+        }, 3000)
         return
       }
 

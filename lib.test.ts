@@ -6,6 +6,7 @@ import {
   jidPhone,
   jidMatch,
   jidListIncludes,
+  unwrapMessage,
   extractText,
   getMediaKind,
   getMediaMime,
@@ -164,6 +165,50 @@ describe('jidListIncludes', () => {
   })
 })
 
+// ─── unwrapMessage ──────────────────────────────────────────────────────────
+
+describe('unwrapMessage', () => {
+  test('returns inner message from ephemeralMessage', () => {
+    const inner = { conversation: 'hello' }
+    expect(unwrapMessage({ ephemeralMessage: { message: inner } })).toBe(inner)
+  })
+
+  test('returns inner message from viewOnceMessage', () => {
+    const inner = { imageMessage: { caption: 'pic' } }
+    expect(unwrapMessage({ viewOnceMessage: { message: inner } })).toBe(inner)
+  })
+
+  test('returns inner message from viewOnceMessageV2', () => {
+    const inner = { videoMessage: { caption: 'vid' } }
+    expect(unwrapMessage({ viewOnceMessageV2: { message: inner } })).toBe(inner)
+  })
+
+  test('returns inner message from documentWithCaptionMessage', () => {
+    const inner = { documentMessage: { caption: 'doc', fileName: 'f.pdf' } }
+    expect(unwrapMessage({ documentWithCaptionMessage: { message: inner } })).toBe(inner)
+  })
+
+  test('returns inner message from editedMessage', () => {
+    const inner = { conversation: 'edited text' }
+    expect(unwrapMessage({ editedMessage: { message: inner } })).toBe(inner)
+  })
+
+  test('returns inner message from protocolMessage.editedMessage', () => {
+    const inner = { conversation: 'proto edit' }
+    expect(unwrapMessage({ protocolMessage: { editedMessage: { message: inner } } })).toBe(inner)
+  })
+
+  test('returns original message when no wrapper', () => {
+    const m = { conversation: 'plain' }
+    expect(unwrapMessage(m)).toBe(m)
+  })
+
+  test('returns null/undefined as-is', () => {
+    expect(unwrapMessage(null)).toBeNull()
+    expect(unwrapMessage(undefined)).toBeUndefined()
+  })
+})
+
 // ─── extractText ─────────────────────────────────────────────────────────────
 
 describe('extractText', () => {
@@ -193,6 +238,22 @@ describe('extractText', () => {
 
   test('returns empty string for undefined', () => {
     expect(extractText(undefined)).toBe('')
+  })
+
+  test('extracts text from ephemeral wrapper', () => {
+    expect(extractText({ message: { ephemeralMessage: { message: { conversation: 'disappearing' } } } })).toBe('disappearing')
+  })
+
+  test('extracts text from viewOnce wrapper', () => {
+    expect(extractText({ message: { viewOnceMessage: { message: { extendedTextMessage: { text: 'once' } } } } })).toBe('once')
+  })
+
+  test('extracts caption from documentWithCaption wrapper', () => {
+    expect(extractText({ message: { documentWithCaptionMessage: { message: { documentMessage: { caption: 'see doc' } } } } })).toBe('see doc')
+  })
+
+  test('extracts text from editedMessage wrapper', () => {
+    expect(extractText({ message: { editedMessage: { message: { conversation: 'fixed typo' } } } })).toBe('fixed typo')
   })
 })
 
@@ -225,6 +286,14 @@ describe('getMediaKind', () => {
 
   test('returns null for null message', () => {
     expect(getMediaKind({ message: null })).toBeNull()
+  })
+
+  test('detects image inside ephemeral wrapper', () => {
+    expect(getMediaKind({ message: { ephemeralMessage: { message: { imageMessage: {} } } } })).toBe('image')
+  })
+
+  test('detects video inside viewOnce wrapper', () => {
+    expect(getMediaKind({ message: { viewOnceMessage: { message: { videoMessage: {} } } } })).toBe('video')
   })
 })
 

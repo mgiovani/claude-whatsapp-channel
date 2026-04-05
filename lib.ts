@@ -116,9 +116,24 @@ export function jidListIncludes(list: string[], jid: string): boolean {
 
 // ─── Message helpers ──────────────────────────────────────────────────────────
 
+// Unwrap Baileys message wrappers (ephemeral, view-once, etc.) to reach the
+// inner message object that contains conversation/extendedTextMessage/etc.
+export function unwrapMessage(m: any): any {
+  if (!m) return m
+  return (
+    m.ephemeralMessage?.message ??
+    m.viewOnceMessage?.message ??
+    m.viewOnceMessageV2?.message ??
+    m.documentWithCaptionMessage?.message ??
+    m.editedMessage?.message ??
+    m.protocolMessage?.editedMessage?.message ??
+    m
+  )
+}
+
 // Extract plain text from any WhatsApp message variant.
 export function extractText(msg: any): string {
-  const m = msg?.message
+  const m = unwrapMessage(msg?.message)
   if (!m) return ''
   return (
     m.conversation ??
@@ -132,7 +147,7 @@ export function extractText(msg: any): string {
 }
 
 export function getMediaKind(msg: any): MediaKind | null {
-  const m = msg?.message
+  const m = unwrapMessage(msg?.message)
   if (!m) return null
   if (m.imageMessage) return 'image'
   if (m.videoMessage) return 'video'
@@ -143,7 +158,7 @@ export function getMediaKind(msg: any): MediaKind | null {
 }
 
 export function getMediaMime(msg: any): string | undefined {
-  const m = msg?.message
+  const m = unwrapMessage(msg?.message)
   return (
     m?.imageMessage?.mimetype ??
     m?.videoMessage?.mimetype ??
@@ -154,7 +169,8 @@ export function getMediaMime(msg: any): string | undefined {
 }
 
 export function getMediaFileName(msg: any): string | undefined {
-  return safeName(msg?.message?.documentMessage?.fileName)
+  const m = unwrapMessage(msg?.message)
+  return safeName(m?.documentMessage?.fileName)
 }
 
 export function mimeToExt(mime: string | undefined): string {
