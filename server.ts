@@ -25,7 +25,6 @@ import * as _baileys from '@whiskeysockets/baileys'
 const makeWASocket = (_baileys as any).default as typeof _baileys.default
 const { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, downloadMediaMessage } = _baileys
 type WASocket = ReturnType<typeof makeWASocket>
-import { randomBytes } from 'crypto'
 import {
   readFileSync,
   writeFileSync,
@@ -34,12 +33,40 @@ import {
   rmSync,
   statSync,
   renameSync,
-  realpathSync,
   chmodSync,
 } from 'fs'
 import { homedir } from 'os'
-import { join, extname, sep, basename } from 'path'
+import { join, extname, basename } from 'path'
 import pino from 'pino'
+import {
+  type Access,
+  type PendingEntry,
+  type GroupPolicy,
+  type GateResult,
+  type MediaKind,
+  MAX_CHUNK_LIMIT,
+  MAX_ATTACHMENT_BYTES,
+  MIME_TO_EXT,
+  IMAGE_EXTS,
+  VIDEO_EXTS,
+  AUDIO_EXTS,
+  defaultAccess,
+  pruneExpired,
+  safeName,
+  bareJid,
+  jidPhone,
+  jidMatch,
+  jidListIncludes,
+  extractText,
+  getMediaKind,
+  getMediaMime,
+  getMediaFileName,
+  mimeToExt,
+  chunk,
+  storeRecent,
+  assertSendable,
+  gate,
+} from './lib.ts'
 
 const STATE_DIR = process.env.WHATSAPP_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'whatsapp')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
@@ -73,59 +100,7 @@ process.on('uncaughtException', err => {
   process.stderr.write(`whatsapp channel: uncaught exception: ${err}\n`)
 })
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type PendingEntry = {
-  senderId: string
-  chatId: string
-  createdAt: number
-  expiresAt: number
-  replies: number
-}
-
-type GroupPolicy = {
-  requireMention: boolean
-  allowFrom: string[]
-}
-
-type Access = {
-  dmPolicy: 'pairing' | 'allowlist' | 'disabled'
-  allowFrom: string[]
-  groups: Record<string, GroupPolicy>
-  pending: Record<string, PendingEntry>
-  mentionPatterns?: string[]
-  /** Emoji to react with on receipt. Empty string disables. */
-  ackReaction?: string
-  /** Which chunks get a quote-reply when reply_to is passed. Default: 'first'. */
-  replyToMode?: 'off' | 'first' | 'all'
-  /** Max chars per outbound message before splitting. Default: 4096. */
-  textChunkLimit?: number
-  /** Split on paragraph boundaries instead of hard char count. */
-  chunkMode?: 'length' | 'newline'
-}
-
 // ─── Access Control ──────────────────────────────────────────────────────────
-
-function defaultAccess(): Access {
-  return { dmPolicy: 'pairing', allowFrom: [], groups: {}, pending: {} }
-}
-
-const MAX_CHUNK_LIMIT = 4096
-const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
-
-// reply's files param takes any path. .env is a credential and the server's
-// own state is the one thing Claude has no reason to ever send.
-function assertSendable(f: string): void {
-  let real, stateReal: string
-  try {
-    real = realpathSync(f)
-    stateReal = realpathSync(STATE_DIR)
-  } catch { return }
-  const inbox = join(stateReal, 'inbox')
-  if (real.startsWith(stateReal + sep) && !real.startsWith(inbox + sep)) {
-    throw new Error(`refusing to send channel state: ${f}`)
-  }
-}
 
 function readAccessFile(): Access {
   try {
@@ -161,15 +136,6 @@ function saveAccess(a: Access): void {
   renameSync(tmp, ACCESS_FILE)
 }
 
-function pruneExpired(a: Access): boolean {
-  const now = Date.now()
-  let changed = false
-  for (const [code, p] of Object.entries(a.pending)) {
-    if (p.expiresAt < now) { delete a.pending[code]; changed = true }
-  }
-  return changed
-}
-
 // Outbound gate — reply/react/edit_message can only target chats the inbound
 // gate would deliver from. For DMs, allowFrom stores the full JID.
 function assertAllowedChat(chat_id: string): void {
@@ -177,69 +143,6 @@ function assertAllowedChat(chat_id: string): void {
   if (jidListIncludes(access.allowFrom, chat_id)) return
   if (chat_id in access.groups) return
   throw new Error(`chat ${chat_id} is not allowlisted — add via /whatsapp:access`)
-}
-
-type GateResult =
-  | { action: 'deliver'; access: Access }
-  | { action: 'drop' }
-  | { action: 'pair'; code: string; isResend: boolean; pendingEntry: PendingEntry; access: Access }
-
-// gate() operates on normalised WhatsApp JIDs.
-// DM JIDs: <phone>@s.whatsapp.net  Group JIDs: <id>@g.us
-function gate(
-  senderId: string,
-  chatType: 'private' | 'group',
-  chatId: string,
-  mentionedMe: boolean,
-): GateResult {
-  const access = loadAccess()
-  const pruned = pruneExpired(access)
-  if (pruned) saveAccess(access)
-
-  if (chatType === 'private') {
-    if (access.dmPolicy === 'disabled') return { action: 'drop' }
-    if (jidListIncludes(access.allowFrom, senderId)) return { action: 'deliver', access }
-    if (access.dmPolicy === 'allowlist') return { action: 'drop' }
-
-    // pairing mode — check for existing non-expired code for this sender
-    for (const [code, p] of Object.entries(access.pending)) {
-      if (jidMatch(p.senderId, senderId)) {
-        // replies is incremented by the caller only after a successful send,
-        // so that a failed delivery (connection down) doesn't eat up retries.
-        if ((p.replies ?? 1) >= 3) return { action: 'drop' }
-        return { action: 'pair', code, isResend: true, pendingEntry: p, access }
-      }
-    }
-    // Cap pending at 3. Extra attempts are silently dropped.
-    if (Object.keys(access.pending).length >= 3) return { action: 'drop' }
-
-    const code = randomBytes(3).toString('hex') // 6 hex chars
-    const now = Date.now()
-    const pendingEntry: PendingEntry = {
-      senderId,
-      chatId,
-      createdAt: now,
-      expiresAt: now + 60 * 60 * 1000, // 1h
-      replies: 1,
-    }
-    access.pending[code] = pendingEntry
-    saveAccess(access)
-    return { action: 'pair', code, isResend: false, pendingEntry, access }
-  }
-
-  if (chatType === 'group') {
-    const policy = access.groups[chatId]
-    if (!policy) return { action: 'drop' }
-    const groupAllowFrom = policy.allowFrom ?? []
-    const requireMention = policy.requireMention ?? true
-    if (groupAllowFrom.length > 0 && !jidListIncludes(groupAllowFrom, senderId)) {
-      return { action: 'drop' }
-    }
-    if (requireMention && !mentionedMe) return { action: 'drop' }
-    return { action: 'deliver', access }
-  }
-
-  return { action: 'drop' }
 }
 
 // ─── Approval Polling ─────────────────────────────────────────────────────────
@@ -268,27 +171,6 @@ function checkApprovals(): void {
 
 setInterval(checkApprovals, 5000).unref()
 
-// ─── Message Chunking ─────────────────────────────────────────────────────────
-
-function chunk(text: string, limit: number, mode: 'length' | 'newline'): string[] {
-  if (text.length <= limit) return [text]
-  const out: string[] = []
-  let rest = text
-  while (rest.length > limit) {
-    let cut = limit
-    if (mode === 'newline') {
-      const para = rest.lastIndexOf('\n\n', limit)
-      const line = rest.lastIndexOf('\n', limit)
-      const space = rest.lastIndexOf(' ', limit)
-      cut = para > limit / 2 ? para : line > limit / 2 ? line : space > 0 ? space : limit
-    }
-    out.push(rest.slice(0, cut))
-    rest = rest.slice(cut).replace(/^\n+/, '')
-  }
-  if (rest) out.push(rest)
-  return out
-}
-
 // ─── WhatsApp Connection ──────────────────────────────────────────────────────
 
 let sock: WASocket | null = null
@@ -308,14 +190,6 @@ const MAX_SENT = 200
 async function safeSend(jid: string, text: string): Promise<void> {
   if (!sock || !isConnected) throw new Error('WhatsApp not connected')
   await sock.sendMessage(jid, { text })
-}
-
-function storeRecent(id: string, msg: any, map: Map<string, any>, cap: number): void {
-  map.set(id, msg)
-  if (map.size > cap) {
-    const oldest = map.keys().next().value
-    if (oldest !== undefined) map.delete(oldest)
-  }
 }
 
 async function connectWhatsApp(): Promise<void> {
@@ -431,99 +305,6 @@ async function connectWhatsApp(): Promise<void> {
 
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-// Sanitize user-controlled strings that land inside the <channel> XML tag.
-function safeName(s: string | undefined): string | undefined {
-  return s?.replace(/[<>\[\]\r\n;]/g, '_')
-}
-
-// Strip device suffix (:0, :1, …) to normalise JIDs for comparison.
-function bareJid(jid: string): string {
-  const parts = jid.split('@')
-  return parts[0].split(':')[0] + '@' + (parts[1] ?? '')
-}
-
-// Extract the numeric phone prefix from a JID, ignoring domain (@s.whatsapp.net
-// vs @lid) and device suffixes (:0, :1).  Two JIDs match if their phone parts match.
-// This is necessary because Baileys v7 can deliver the same user as either
-// "num@s.whatsapp.net" or "num@lid" depending on the message type.
-function jidPhone(jid: string): string {
-  return jid.split('@')[0].split(':')[0]
-}
-
-// Check whether two JIDs refer to the same user (same phone number, ignoring
-// domain differences like @lid vs @s.whatsapp.net and device suffixes).
-function jidMatch(a: string, b: string): boolean {
-  return jidPhone(a) === jidPhone(b)
-}
-
-// Check whether a list of JIDs contains one matching a given JID (normalised).
-function jidListIncludes(list: string[], jid: string): boolean {
-  const phone = jidPhone(jid)
-  return list.some(j => jidPhone(j) === phone)
-}
-
-// Extract plain text from any WhatsApp message variant.
-function extractText(msg: any): string {
-  const m = msg?.message
-  if (!m) return ''
-  return (
-    m.conversation ??
-    m.extendedTextMessage?.text ??
-    m.imageMessage?.caption ??
-    m.videoMessage?.caption ??
-    m.documentMessage?.caption ??
-    m.audioMessage?.caption ??
-    ''
-  )
-}
-
-type MediaKind = 'image' | 'video' | 'audio' | 'document' | 'sticker'
-
-function getMediaKind(msg: any): MediaKind | null {
-  const m = msg?.message
-  if (!m) return null
-  if (m.imageMessage) return 'image'
-  if (m.videoMessage) return 'video'
-  if (m.audioMessage) return 'audio'
-  if (m.documentMessage) return 'document'
-  if (m.stickerMessage) return 'sticker'
-  return null
-}
-
-function getMediaMime(msg: any): string | undefined {
-  const m = msg?.message
-  return (
-    m?.imageMessage?.mimetype ??
-    m?.videoMessage?.mimetype ??
-    m?.audioMessage?.mimetype ??
-    m?.documentMessage?.mimetype ??
-    m?.stickerMessage?.mimetype
-  )
-}
-
-function getMediaFileName(msg: any): string | undefined {
-  return safeName(msg?.message?.documentMessage?.fileName)
-}
-
-const MIME_TO_EXT: Record<string, string> = {
-  'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
-  'video/mp4': 'mp4', 'video/3gpp': '3gp',
-  'audio/ogg; codecs=opus': 'ogg', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3',
-  'application/pdf': 'pdf',
-}
-
-function mimeToExt(mime: string | undefined): string {
-  if (!mime) return 'bin'
-  return MIME_TO_EXT[mime] ?? mime.split('/')[1]?.split(';')[0] ?? 'bin'
-}
-
-// Images render inline on WhatsApp; everything else sends as a document.
-const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp'])
-const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm'])
-const AUDIO_EXTS = new Set(['.mp3', '.ogg', '.m4a', '.wav', '.aac', '.opus'])
-
 // ─── MCP Server ───────────────────────────────────────────────────────────────
 
 const mcp = new Server(
@@ -628,7 +409,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         if (!sock || !isConnected) throw new Error('WhatsApp not connected')
 
         for (const f of files) {
-          assertSendable(f)
+          assertSendable(f, STATE_DIR)
           const st = statSync(f)
           if (st.size > MAX_ATTACHMENT_BYTES) {
             throw new Error(`file too large: ${f} (${(st.size / 1024 / 1024).toFixed(1)}MB, max 50MB)`)
@@ -805,7 +586,7 @@ async function handleInbound(msg: any): Promise<void> {
   const senderId = isGroup ? (msg.key.participant ?? jid) : jid
 
   const mentionedMe = isGroup ? isMentioned(msg) : false
-  const result = gate(senderId, chatType, chatId, mentionedMe)
+  const result = gate(senderId, chatType, chatId, mentionedMe, { load: loadAccess, save: saveAccess })
 
   if (result.action === 'drop') return
 

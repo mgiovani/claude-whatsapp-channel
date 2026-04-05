@@ -6,7 +6,8 @@
   "type": "module",
   "bin": "./server.ts",
   "scripts": {
-    "start": "node --experimental-strip-types server.ts"
+    "start": "node --experimental-strip-types server.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

@@ -1,4 +1,4 @@
-.PHONY: dev install clean
+.PHONY: dev install clean test
 
 # Start Claude Code with the WhatsApp channel loaded for development
 dev:
@@ -7,6 +7,10 @@ dev:
 # Install dependencies
 install:
 	bun install
+
+# Run unit tests
+test:
+	bun test
 
 # Clear the plugin cache (forces re-cache from source on next start)
 clean:
