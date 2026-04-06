@@ -69,6 +69,8 @@ import {
   mimeToExt,
   chunk,
   toWhatsAppFormat,
+  pickDocumentFilename,
+  shouldSendAsDocument,
   storeRecent,
   assertSendable,
   gate,
@@ -673,14 +675,45 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         }
 
         const access = loadAccess()
-        const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
-        const mode = access.chunkMode ?? 'length'
-        const replyMode = access.replyToMode ?? 'first'
-        const chunks = chunk(text, limit, mode)
         const sentIds: string[] = []
 
         // Resolve quoted message for threading.
         const quotedMsg = reply_to ? recentMessages.get(reply_to) : undefined
+        const quoteOpts: Record<string, unknown> = quotedMsg ? { quoted: quotedMsg } : {}
+
+        // Document mode: send as file attachment when text exceeds threshold.
+        if (shouldSendAsDocument(text, access.documentThreshold)) {
+          const { name, mime } = pickDocumentFilename(text, access.documentFormat ?? 'auto')
+          const tmpPath = join(INBOX_DIR, `reply-${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`)
+          mkdirSync(INBOX_DIR, { recursive: true })
+          try {
+            writeFileSync(tmpPath, text, 'utf8')
+            const buf = readFileSync(tmpPath)
+            const sent = await sock!.sendMessage(
+              chat_id,
+              { document: buf, fileName: name, mimetype: mime },
+              quoteOpts,
+            )
+            const sentId = sent?.key?.id
+            if (sentId) {
+              sentIds.push(sentId)
+              storeRecent(sentId, sent, sentKeys, MAX_SENT)
+            }
+          } finally {
+            try { rmSync(tmpPath, { force: true }) } catch {}
+          }
+
+          const result =
+            sentIds.length === 1
+              ? `sent as document (id: ${sentIds[0]})`
+              : `sent as document`
+          return { content: [{ type: 'text', text: result }] }
+        }
+
+        const limit = Math.max(1, Math.min(access.textChunkLimit ?? MAX_CHUNK_LIMIT, MAX_CHUNK_LIMIT))
+        const mode = access.chunkMode ?? 'length'
+        const replyMode = access.replyToMode ?? 'first'
+        const chunks = chunk(text, limit, mode)
 
         for (let i = 0; i < chunks.length; i++) {
           const shouldQuote = quotedMsg != null && replyMode !== 'off' && (replyMode === 'all' || i === 0)

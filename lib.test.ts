@@ -14,6 +14,8 @@ import {
   mimeToExt,
   chunk,
   toWhatsAppFormat,
+  pickDocumentFilename,
+  shouldSendAsDocument,
   storeRecent,
   defaultAccess,
   pruneExpired,
@@ -779,5 +781,69 @@ describe('toWhatsAppFormat', () => {
     ].join('\n')
 
     expect(toWhatsAppFormat(input)).toBe(expected)
+  })
+})
+
+describe('pickDocumentFilename', () => {
+  test('returns txt for plain text (auto)', () => {
+    expect(pickDocumentFilename('Hello world', 'auto')).toEqual({ name: 'response.txt', mime: 'text/plain' })
+  })
+
+  test('returns md for text with a heading (auto)', () => {
+    expect(pickDocumentFilename('# Title\nSome content', 'auto')).toEqual({ name: 'response.md', mime: 'text/markdown' })
+  })
+
+  test('returns md for text with bold (auto)', () => {
+    expect(pickDocumentFilename('Here is **bold** text', 'auto')).toEqual({ name: 'response.md', mime: 'text/markdown' })
+  })
+
+  test('returns md for text with code block (auto)', () => {
+    expect(pickDocumentFilename('```\ncode\n```', 'auto')).toEqual({ name: 'response.md', mime: 'text/markdown' })
+  })
+
+  test('returns md for text with list (auto)', () => {
+    expect(pickDocumentFilename('- item one\n- item two', 'auto')).toEqual({ name: 'response.md', mime: 'text/markdown' })
+  })
+
+  test('returns md for text with ordered list (auto)', () => {
+    expect(pickDocumentFilename('1. first\n2. second', 'auto')).toEqual({ name: 'response.md', mime: 'text/markdown' })
+  })
+
+  test('forces txt when format is txt', () => {
+    expect(pickDocumentFilename('# heading', 'txt')).toEqual({ name: 'response.txt', mime: 'text/plain' })
+  })
+
+  test('forces md when format is md', () => {
+    expect(pickDocumentFilename('plain text', 'md')).toEqual({ name: 'response.md', mime: 'text/markdown' })
+  })
+
+  test('defaults to auto when format is omitted', () => {
+    expect(pickDocumentFilename('# heading')).toEqual({ name: 'response.md', mime: 'text/markdown' })
+  })
+})
+
+describe('shouldSendAsDocument', () => {
+  test('returns false when threshold is 0 (disabled)', () => {
+    expect(shouldSendAsDocument('x'.repeat(10000), 0)).toBe(false)
+  })
+
+  test('returns false when threshold is undefined (disabled by default)', () => {
+    expect(shouldSendAsDocument('x'.repeat(10000), undefined)).toBe(false)
+  })
+
+  test('returns true when threshold is -1 (always)', () => {
+    expect(shouldSendAsDocument('short', -1)).toBe(true)
+  })
+
+  test('returns false when text is shorter than threshold', () => {
+    expect(shouldSendAsDocument('x'.repeat(100), 4000)).toBe(false)
+  })
+
+  test('returns false when text length equals threshold', () => {
+    expect(shouldSendAsDocument('x'.repeat(4000), 4000)).toBe(false)
+  })
+
+  test('returns true when text length exceeds threshold', () => {
+    expect(shouldSendAsDocument('x'.repeat(4001), 4000)).toBe(true)
   })
 })

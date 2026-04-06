@@ -35,6 +35,10 @@ export type Access = {
   replyToMode?: 'off' | 'first' | 'all'
   textChunkLimit?: number
   chunkMode?: 'length' | 'newline'
+  /** Char length above which reply sends as a document. 0 = disabled (default). -1 = always. */
+  documentThreshold?: number
+  /** File format for document replies. 'auto' picks md vs txt by content. */
+  documentFormat?: 'auto' | 'md' | 'txt'
 }
 
 export type GateResult =
@@ -283,6 +287,36 @@ export function toWhatsAppFormat(text: string): string {
   }
 
   return text
+}
+
+// ─── Document helpers ─────────────────────────────────────────────────────────
+
+/** Returns filename + MIME for a document reply based on content and user preference. */
+export function pickDocumentFilename(
+  text: string,
+  format: 'auto' | 'md' | 'txt' = 'auto',
+): { name: string; mime: string } {
+  if (format === 'txt') return { name: 'response.txt', mime: 'text/plain' }
+  if (format === 'md') return { name: 'response.md', mime: 'text/markdown' }
+
+  // auto: detect markdown by common markers
+  const looksLikeMarkdown =
+    /^#{1,6} /m.test(text) ||       // headings
+    /\*\*[^*]+\*\*/m.test(text) ||  // bold
+    /^```/m.test(text) ||           // code block
+    /^- /m.test(text) ||            // list
+    /^\d+\. /m.test(text)           // ordered list
+
+  return looksLikeMarkdown
+    ? { name: 'response.md', mime: 'text/markdown' }
+    : { name: 'response.txt', mime: 'text/plain' }
+}
+
+/** Returns true when text length triggers the document threshold. */
+export function shouldSendAsDocument(text: string, threshold: number | undefined): boolean {
+  if (!threshold || threshold === 0) return false
+  if (threshold === -1) return true
+  return text.length > threshold
 }
 
 // ─── Map helpers ──────────────────────────────────────────────────────────────
