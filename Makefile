@@ -4,9 +4,9 @@
 dev:
 	npm install --silent && claude --dangerously-load-development-channels server:whatsapp
 
-# Install dependencies
+# Install dependencies (Node.js runtime; bun is used for testing only)
 install:
-	bun install
+	npm install
 
 # Run unit tests
 test:
@@ -14,4 +14,4 @@ test:
 
 # Clear the plugin cache (forces re-cache from source on next start)
 clean:
-	rm -rf ~/.claude/plugins/cache/whatsapp-local/
+	rm -rf ~/.claude/plugins/cache/whatsapp-channel/

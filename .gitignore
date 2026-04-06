@@ -1,3 +1,9 @@
 node_modules/
 .env
 auth/
+*.pem
+*.key
+.DS_Store
+Thumbs.db
+coverage/
+*.tgz

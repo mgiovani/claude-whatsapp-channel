@@ -1,12 +1,25 @@
 {
-  "name": "claude-channel-whatsapp",
-  "version": "0.0.1",
+  "name": "claude-whatsapp-channel",
+  "version": "0.1.0",
   "description": "WhatsApp channel for Claude Code — messaging bridge using Baileys with built-in access control",
   "license": "Apache-2.0",
+  "author": "mgiovani <e@giovani.dev>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mgiovani/claude-whatsapp-channel"
+  },
+  "homepage": "https://github.com/mgiovani/claude-whatsapp-channel",
+  "bugs": {
+    "url": "https://github.com/mgiovani/claude-whatsapp-channel/issues"
+  },
+  "keywords": ["whatsapp", "claude", "mcp", "channel", "baileys", "claude-code"],
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "bin": "./server.ts",
   "scripts": {
-    "start": "npm install --silent && node --experimental-strip-types server.ts",
+    "start": "bun install --no-summary && node --experimental-strip-types server.ts",
     "test": "bun test"
   },
   "dependencies": {

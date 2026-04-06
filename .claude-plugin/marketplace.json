@@ -1,13 +1,13 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "whatsapp-local",
+  "name": "whatsapp-channel",
   "owner": {
     "name": "mgiovani",
     "email": "e@giovani.dev"
   },
   "metadata": {
     "description": "WhatsApp channel for Claude Code",
-    "version": "0.0.1"
+    "version": "0.1.0"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
       "source": "./",
       "strict": false,
       "description": "WhatsApp channel for Claude Code — messaging bridge using Baileys with built-in access control",
-      "version": "0.0.1",
+      "version": "0.1.0",
       "author": {
         "name": "mgiovani",
         "email": "e@giovani.dev",
