@@ -304,7 +304,7 @@ export async function connectWhatsApp(hooks: {
   sock.ev.on('messages.upsert', ({ messages, type }) => {
     if (type !== 'notify') return
     for (const msg of messages) {
-      if (msg.key.fromMe) continue                         // Skip own messages.
+      if (msg.key.fromMe && sentKeys.has(msg.key.id)) continue // Skip channel-sent echoes.
       if (msg.key.remoteJid === 'status@broadcast') continue // Skip status updates.
       hooks.onMessage(msg).catch(err =>
         process.stderr.write(`whatsapp channel: handleInbound failed: ${err}\n`),
