@@ -4,15 +4,20 @@ set -euo pipefail
 
 STATE_DIR="${HOME}/.claude/channels/whatsapp"
 
-# --- Connection ---
+# --- Connection (from state.json) ---
 status="not_started"
-if [[ -f "${STATE_DIR}/status.txt" ]]; then
-  status=$(cat "${STATE_DIR}/status.txt")
-fi
-
 me=""
-if [[ -f "${STATE_DIR}/me.txt" ]]; then
-  me=$(cat "${STATE_DIR}/me.txt")
+if [[ -f "${STATE_DIR}/state.json" ]] && command -v python3 &>/dev/null; then
+  eval "$(python3 -c "
+import json, sys
+try:
+    s = json.load(open('${STATE_DIR}/state.json'))
+    print('status=' + repr(s.get('status', 'not_started')))
+    print('me=' + repr(s.get('myJid', '')))
+except Exception:
+    print('status=not_started')
+    print('me=')
+")"
 fi
 
 echo "CONNECTION: ${status}"

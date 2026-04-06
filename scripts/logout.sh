@@ -6,7 +6,7 @@ STATE_DIR="${HOME}/.claude/channels/whatsapp"
 
 rm -rf "${STATE_DIR}/auth/"
 rm -rf "${STATE_DIR}/approved/"
-rm -f "${STATE_DIR}/status.txt" "${STATE_DIR}/me.txt" "${STATE_DIR}/qr.txt" "${STATE_DIR}/pairing_code.txt"
+rm -f "${STATE_DIR}/state.json" "${STATE_DIR}/qr.txt"
 rm -f "${STATE_DIR}/lid-mapping.json"
 
 # Reset access.json to defaults (clear allowlist, pending pairings)

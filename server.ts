@@ -29,6 +29,8 @@ type WASocket = ReturnType<typeof makeWASocket>
 import {
   readFileSync,
   writeFileSync,
+  openSync,
+  closeSync,
   mkdirSync,
   readdirSync,
   rmSync,
@@ -79,8 +81,8 @@ const APPROVED_DIR = join(STATE_DIR, 'approved')
 const INBOX_DIR = join(STATE_DIR, 'inbox')
 const ENV_FILE = join(STATE_DIR, '.env')
 const QR_FILE = join(STATE_DIR, 'qr.txt')
-const STATUS_FILE = join(STATE_DIR, 'status.txt')
-const ME_FILE = join(STATE_DIR, 'me.txt')
+const STATE_FILE = join(STATE_DIR, 'state.json')
+const LOCK_FILE = join(STATE_DIR, 'server.pid')
 
 // Load ~/.claude/channels/whatsapp/.env into process.env. Real env wins.
 // Plugin-spawned servers don't get an env block — this is where WHATSAPP_PHONE lives.
@@ -194,6 +196,31 @@ function saveAccess(a: Access): void {
   renameSync(tmp, ACCESS_FILE)
 }
 
+// ─── Connection State ─────────────────────────────────────────────────────────
+// Consolidated state.json replaces the old me.txt / status.txt / pairing_code.txt
+// trio. Each field is optional so a partial update never loses other fields.
+
+type WaState = {
+  status: string
+  myJid?: string
+  pairingCode?: string
+}
+
+function loadState(): WaState {
+  try {
+    return JSON.parse(readFileSync(STATE_FILE, 'utf8')) as WaState
+  } catch {
+    return { status: 'disconnected' }
+  }
+}
+
+function saveState(s: WaState): void {
+  mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+  const tmp = STATE_FILE + '.tmp'
+  writeFileSync(tmp, JSON.stringify(s, null, 2) + '\n', { mode: 0o600 })
+  renameSync(tmp, STATE_FILE)
+}
+
 // Outbound gate — reply/react/edit_message can only target chats the inbound
 // gate would deliver from. For DMs, allowFrom stores the full JID.
 function assertAllowedChat(chat_id: string): void {
@@ -258,6 +285,46 @@ function checkApprovals(): void {
 }
 
 setInterval(checkApprovals, 5000).unref()
+
+// ─── Single-Instance Lock ─────────────────────────────────────────────────────
+// Prevents two Claude sessions from sharing the same Baileys connection, which
+// causes connectionReplaced storms. Uses O_EXCL for atomic acquisition; stale
+// locks (dead PID) are silently cleared.
+
+function acquireLock(): boolean {
+  try {
+    // Atomic create — fails if file already exists.
+    const fd = openSync(LOCK_FILE, 'wx')
+    writeFileSync(fd, String(process.pid))
+    closeSync(fd)
+    return true
+  } catch {
+    // File exists — check whether that process is still alive.
+    try {
+      const existing = parseInt(readFileSync(LOCK_FILE, 'utf8').trim(), 10)
+      if (!isNaN(existing) && existing !== process.pid) {
+        try {
+          process.kill(existing, 0) // signal 0 = existence check only
+          return false              // process is alive → conflict
+        } catch {
+          // Process is gone (ESRCH) — stale lock. Clear and retry once.
+          rmSync(LOCK_FILE, { force: true })
+          const fd = openSync(LOCK_FILE, 'wx')
+          writeFileSync(fd, String(process.pid))
+          closeSync(fd)
+          return true
+        }
+      }
+    } catch {
+      // Unreadable or already gone — treat as free.
+    }
+    return true
+  }
+}
+
+function releaseLock(): void {
+  try { rmSync(LOCK_FILE, { force: true }) } catch {}
+}
 
 // ─── WhatsApp Connection ──────────────────────────────────────────────────────
 
@@ -369,7 +436,7 @@ async function connectWhatsApp(): Promise<void> {
     if (qr) {
       mkdirSync(STATE_DIR, { recursive: true })
       writeFileSync(QR_FILE, qr)
-      writeFileSync(STATUS_FILE, 'awaiting_qr')
+      saveState({ ...loadState(), status: 'awaiting_qr' })
       process.stderr.write('whatsapp channel: QR ready — run /whatsapp:configure qr to display\n')
 
       // Pairing code flow: if WHATSAPP_PHONE is set, request code instead of QR.
@@ -378,7 +445,7 @@ async function connectWhatsApp(): Promise<void> {
         try {
           const digits = WHATSAPP_PHONE.replace(/\D/g, '')
           const code = await sock!.requestPairingCode(digits)
-          writeFileSync(join(STATE_DIR, 'pairing_code.txt'), code)
+          saveState({ ...loadState(), pairingCode: code })
           process.stderr.write('whatsapp channel: pairing code ready — run /whatsapp:configure to see it\n')
         } catch (err) {
           process.stderr.write(`whatsapp channel: pairing code request failed: ${err}\n`)
@@ -391,11 +458,8 @@ async function connectWhatsApp(): Promise<void> {
       reconnectAttempt = 0
       replaceCount = 0
       const myJid = sock!.user?.id ?? ''
-      mkdirSync(STATE_DIR, { recursive: true })
-      writeFileSync(ME_FILE, myJid)
-      writeFileSync(STATUS_FILE, 'connected')
+      saveState({ status: 'connected', myJid })
       try { rmSync(QR_FILE, { force: true }) } catch {}
-      try { rmSync(join(STATE_DIR, 'pairing_code.txt'), { force: true }) } catch {}
       process.stderr.write(`whatsapp channel: connected as ${myJid}\n`)
     }
 
@@ -404,7 +468,7 @@ async function connectWhatsApp(): Promise<void> {
       const statusCode = (lastDisconnect?.error as any)?.output?.statusCode
 
       if (statusCode === DisconnectReason.loggedOut) {
-        writeFileSync(STATUS_FILE, 'logged_out')
+        saveState({ ...loadState(), status: 'logged_out' })
         process.stderr.write('whatsapp channel: logged out — clearing auth and generating new QR\n')
         // Clear auth so next connect generates a fresh QR.
         try { rmSync(AUTH_DIR, { recursive: true, force: true }) } catch {}
@@ -420,7 +484,7 @@ async function connectWhatsApp(): Promise<void> {
       if (shuttingDown) return
 
       const reason = DisconnectReason[statusCode as keyof typeof DisconnectReason] ?? String(statusCode)
-      writeFileSync(STATUS_FILE, `disconnected:${reason}`)
+      saveState({ ...loadState(), status: `disconnected:${reason}` })
 
       if (statusCode === DisconnectReason.connectionReplaced) {
         replaceCount++
@@ -1072,6 +1136,7 @@ const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 function shutdown(): void {
   if (shuttingDown) return
   shuttingDown = true
+  releaseLock()
   process.stderr.write('whatsapp channel: shutting down\n')
   setTimeout(() => process.exit(0), 2000)
   try { sock?.end(new Error('shutdown')) } catch {}
@@ -1085,9 +1150,19 @@ process.on('SIGINT', shutdown)
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
 
+mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+
+// Check before connecting to MCP so Claude Code sees "failed to start" rather
+// than "server connected and died" — cleaner error surface for the user.
+if (!acquireLock()) {
+  process.stderr.write(
+    'whatsapp channel: another instance is already running — close the other Claude session first\n',
+  )
+  process.exit(1)
+}
+
 await mcp.connect(new StdioServerTransport())
 
-mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
 // Clean stale QR from previous session — prevents showing an expired code.
 try { rmSync(QR_FILE, { force: true }) } catch {}
 process.stderr.write('whatsapp channel: starting\n')
