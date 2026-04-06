@@ -7,6 +7,7 @@ STATE_DIR="${HOME}/.claude/channels/whatsapp"
 # --- Connection (from state.json) ---
 status="not_started"
 me=""
+pairing_code=""
 if [[ -f "${STATE_DIR}/state.json" ]] && command -v python3 &>/dev/null; then
   eval "$(python3 -c "
 import json, sys
@@ -14,9 +15,11 @@ try:
     s = json.load(open('${STATE_DIR}/state.json'))
     print('status=' + repr(s.get('status', 'not_started')))
     print('me=' + repr(s.get('myJid', '')))
+    print('pairing_code=' + repr(s.get('pairingCode', '')))
 except Exception:
     print('status=not_started')
     print('me=')
+    print('pairing_code=')
 ")"
 fi
 
@@ -25,6 +28,11 @@ if [[ -n "$me" ]]; then
   # Extract just the phone number (before : or @)
   phone=$(echo "$me" | sed 's/[@:].*$//')
   echo "LINKED_NUMBER: ${phone}"
+fi
+if [[ -n "$pairing_code" ]]; then
+  echo "PAIRING_CODE: ${pairing_code}"
+else
+  echo "PAIRING_CODE: none"
 fi
 
 # --- Access ---

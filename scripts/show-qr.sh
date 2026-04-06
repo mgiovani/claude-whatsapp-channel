@@ -32,18 +32,24 @@ try:
     qr.make(fit=True)
     qr.print_ascii(invert=True)
 except ImportError:
-    print('ERROR: Install qrencode or python3-qrcode:')
-    print('  apt install qrencode  OR  pip install qrcode')
+    print('ERROR: QR renderer not found. Install one of:')
+    print('  macOS:  brew install qrencode  OR  pip3 install qrcode[pil]')
+    print('  Linux:  apt install qrencode   OR  pip3 install qrcode[pil]')
     print()
-    print('Raw QR data (first 80 chars):')
-    print('''${qr_data}'''[:80] + '...')
+    print('Then run /whatsapp:configure qr again.')
+    print()
+    print('Alternatively, use the pairing code flow:')
+    print('  /whatsapp:configure pair +<your-phone-number>')
 "
 else
-  echo "ERROR: No QR renderer available."
-  echo "Install qrencode: apt install qrencode"
+  echo "ERROR: No QR renderer available (qrencode not found, python3 not found)."
   echo ""
-  echo "Raw QR data (first 80 chars):"
-  echo "${qr_data:0:80}..."
+  echo "Install a renderer:"
+  echo "  macOS:  brew install qrencode  OR  pip3 install qrcode[pil]"
+  echo "  Linux:  apt install qrencode   OR  pip3 install qrcode[pil]"
+  echo ""
+  echo "Or use the pairing code flow instead:"
+  echo "  /whatsapp:configure pair +<your-phone-number>"
 fi
 
 echo ""

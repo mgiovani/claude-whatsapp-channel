@@ -23,8 +23,14 @@ via QR code or a pairing code. Auth state persists in
 
 Arguments passed: `$ARGUMENTS`
 
-Helper scripts live at `$CLAUDE_PLUGIN_ROOT/scripts/`. Use them for deterministic
-flows — they're instant and avoid QR code expiration from slow multi-step tool calls.
+Helper scripts live under the plugin's `scripts/` directory. Resolve the path once
+with a fallback before running any script:
+
+```bash
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.sh -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+```
+
+If `PLUGIN_DIR` is empty after this, tell the user the plugin may not be installed correctly.
 
 ---
 
@@ -32,20 +38,35 @@ flows — they're instant and avoid QR code expiration from slow multi-step tool
 
 ### No args — show status and auto-display QR if awaiting
 
-Run the status script in a single call:
+Resolve `PLUGIN_DIR` (see above), then run the status script in a single call:
 
-```
-bash "$CLAUDE_PLUGIN_ROOT/scripts/status.sh"
+```bash
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.sh -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+bash "$PLUGIN_DIR/status.sh"
 ```
 
 Present the output to the user in a readable format. The output has structured
-lines like `CONNECTION: awaiting_qr`, `DM_POLICY: pairing`, `ALLOWED_COUNT: 1`, etc.
+lines like `CONNECTION: awaiting_qr`, `DM_POLICY: pairing`, `ALLOWED_COUNT: 1`,
+`PAIRING_CODE: ABCD1234`, etc.
 
-**If the output contains `CONNECTION: awaiting_qr`**, also run the QR script
-immediately (see `qr` section below) so the user can scan without a second command.
+**If the output contains `PAIRING_CODE:` (not `none`)**, display the code prominently
+and give instructions — do NOT run the QR script:
+
+> **Your pairing code: `ABCD-1234`**
+>
+> On WhatsApp, go to:
+> **Linked Devices → Link a Device → Link with phone number instead**
+> Enter the 8-digit code above.
+>
+> After entering, run `/whatsapp:configure` to verify the connection.
+
+**If the output contains `CONNECTION: awaiting_qr`** (and no pairing code), also run
+the QR script immediately (see `qr` section below) so the user can scan without a
+second command.
 
 **What next** — end with a concrete next step based on the status:
-- `awaiting_qr` (QR already shown) → *"Scan the QR code above with WhatsApp.
+- `awaiting_qr` with pairing code → show code as above (do not show QR)
+- `awaiting_qr` without pairing code → *"Scan the QR code above with WhatsApp.
   If it expired, run `/whatsapp:configure qr` for a fresh one. Alternatively, run
   `/whatsapp:configure pair +5511999999999` to use a pairing code instead."*
 - `disconnected:*` or `logged_out` → *"Restart the channel server, then run
@@ -60,10 +81,11 @@ switching `dmPolicy` to `allowlist` so no new numbers can trigger pairing codes.
 
 ### `qr` — display QR code
 
-Run the QR script in a single call:
+Resolve `PLUGIN_DIR` (see preamble above), then run the QR script in a single call:
 
-```
-bash "$CLAUDE_PLUGIN_ROOT/scripts/show-qr.sh"
+```bash
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.sh -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+bash "$PLUGIN_DIR/show-qr.sh"
 ```
 
 The script renders the QR code and prints scan instructions. **Output its full
@@ -90,10 +112,11 @@ Pairing code is an alternative to QR scanning — useful for headless setups.
 
 ### `logout` — unlink the device
 
-Run the logout script:
+Resolve `PLUGIN_DIR` (see preamble above), then run the logout script:
 
-```
-bash "$CLAUDE_PLUGIN_ROOT/scripts/logout.sh"
+```bash
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.sh -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+bash "$PLUGIN_DIR/logout.sh"
 ```
 
 Present the script's output to the user.
