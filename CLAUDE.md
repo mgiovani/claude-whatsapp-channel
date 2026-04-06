@@ -17,19 +17,25 @@ server.ts                  Single-file MCP server (~850 lines)
 skills/configure/SKILL.md  /whatsapp:configure skill
 skills/access/SKILL.md     /whatsapp:access skill
 .claude-plugin/plugin.json Plugin metadata
-.mcp.json                  MCP server config (bun stdio)
+.mcp.json                  MCP server config (node, uses ${CLAUDE_PLUGIN_ROOT})
 ```
 
 ## Development
 
 ```bash
-bun install
+npm install
 
-# Run directly (requires Claude Code v2.1.80+)
+# Plugin install (recommended — loads skills automatically):
+# Inside Claude Code: /plugin install whatsapp@https://github.com/mgiovani/claude-whatsapp-channel
+
+# Dev mode (local checkout):
 claude --dangerously-load-development-channels server:whatsapp
 
-# Or via the .mcp.json config in a Claude session
+# Manual MCP registration (settings.json):
+# "node", ["--experimental-strip-types", "/abs/path/to/server.ts"]
 ```
+
+Note: `.mcp.json` uses `${CLAUDE_PLUGIN_ROOT}` which is only resolved by the plugin system. For dev mode, use `--dangerously-load-development-channels` or the manual settings.json path.
 
 ## State directory
 

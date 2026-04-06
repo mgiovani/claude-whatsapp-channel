@@ -6,7 +6,7 @@
   "type": "module",
   "bin": "./server.ts",
   "scripts": {
-    "start": "node --experimental-strip-types server.ts",
+    "start": "npm install --silent && node --experimental-strip-types server.ts",
     "test": "bun test"
   },
   "dependencies": {

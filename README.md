@@ -33,7 +33,7 @@ For production business use, consider the official [WhatsApp Business Cloud API]
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) v1.0+
+- [Node.js](https://nodejs.org) v22+ (Node.js required — Bun lacks WebSocket events that Baileys needs)
 - Claude Code v2.1.80+
 - A WhatsApp account (personal phone number)
 
@@ -41,13 +41,47 @@ For production business use, consider the official [WhatsApp Business Cloud API]
 
 ## Installation
 
-```bash
-# Clone the repo
-git clone https://github.com/YOUR_USERNAME/claude-whatsapp-channel
-cd claude-whatsapp-channel
+### Recommended — plugin system (2 commands)
 
-# Install dependencies
-bun install
+Inside a Claude Code session:
+
+```
+/plugin install whatsapp@https://github.com/mgiovani/claude-whatsapp-channel
+/reload-plugins
+```
+
+Claude Code clones the repo, resolves `${CLAUDE_PLUGIN_ROOT}`, and loads the MCP server and skills automatically.
+
+### Manual fallback — settings.json
+
+If you prefer to manage the installation yourself:
+
+```bash
+git clone https://github.com/mgiovani/claude-whatsapp-channel
+cd claude-whatsapp-channel
+npm install
+```
+
+Then add to `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "whatsapp": {
+      "command": "node",
+      "args": ["--experimental-strip-types", "/absolute/path/to/claude-whatsapp-channel/server.ts"]
+    }
+  }
+}
+```
+
+### Development — dangerously-load-development-channels
+
+```bash
+git clone https://github.com/mgiovani/claude-whatsapp-channel
+cd claude-whatsapp-channel
+npm install
+claude --dangerously-load-development-channels server:whatsapp
 ```
 
 ---
@@ -114,13 +148,14 @@ Once your trusted numbers are paired, switch to `allowlist` mode so no new numbe
 
 ## Usage
 
-Once configured, start Claude with the channel active:
+Once configured, start (or restart) Claude Code. If installed via the plugin system, the channel loads automatically. If using the manual/dev path, start Claude with the channel active:
 
 ```bash
-# Development (local plugin)
-claude --dangerously-load-development-channels server:whatsapp
+# Plugin system install (automatic after /reload-plugins)
+# → no extra flags needed
 
-# Or register it as a local server in your project's .mcp.json
+# Development install
+claude --dangerously-load-development-channels server:whatsapp
 ```
 
 Send a WhatsApp message from a paired number. Claude receives it as:
