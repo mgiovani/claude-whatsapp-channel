@@ -24,23 +24,21 @@ via QR code or a pairing code. Auth state persists in
 
 Arguments passed: `$ARGUMENTS`
 
-All subcommands are handled by a single script. Resolve the script path once:
+All subcommands except `transcription` are handled by a single script.
+Run it **in the foreground** (never in the background) with a **timeout of at least
+150 seconds** (the script polls for up to 2 minutes):
 
 ```bash
-SCRIPT="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name configure.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null | sed 's|/scripts$||')}/scripts/configure.ts"
+node --experimental-strip-types "$CLAUDE_PLUGIN_ROOT/scripts/configure.ts" $ARGUMENTS
 ```
 
-If the script doesn't exist, tell the user the plugin may not be installed correctly.
+If `$CLAUDE_PLUGIN_ROOT` is not set, the plugin may not be installed correctly.
 
 ---
 
-## Dispatch on arguments
+## Interpreting the output
 
 ### No args — show status and auto-display QR if awaiting
-
-```bash
-node --experimental-strip-types "$SCRIPT"
-```
 
 Present the output to the user in a readable format. The output has structured
 lines like `CONNECTION: awaiting_qr`, `DM_POLICY: pairing`, `ALLOWED_COUNT: 1`,
@@ -58,9 +56,12 @@ and give instructions:
 > The script is waiting and will detect the connection automatically.
 
 **If the output contains `CONNECTION: awaiting_qr`** (and no pairing code), the script
-automatically displays the QR code and polls for connection. **If the output contains
-`QR_IMAGE:`**, use the `Read` tool on that file path to display the QR code image
-directly in the Claude Code interface so the user can scan it.
+automatically displays the QR code and polls for connection.
+
+**IMPORTANT — displaying the QR image:** The QR code in the Bash output will be
+collapsed. After the script runs, look for `QR_IMAGE:` in the output. Use the `Read`
+tool on that file path to display the QR PNG directly in the Claude Code interface.
+This is the primary way the user sees the QR code — always do this step.
 
 **What next** — end with a concrete next step based on the status:
 - `awaiting_qr` with pairing code → show code as above (do not show QR)
@@ -81,16 +82,11 @@ switching `dmPolicy` to `allowlist` so no new numbers can trigger pairing codes.
 
 ### `qr` — display QR code
 
-```bash
-node --experimental-strip-types "$SCRIPT" qr
-```
-
 The script prints the QR code as UTF-8 block art, then **polls for up to 2 minutes**,
 auto-refreshing the QR when it rotates. It prints `CONNECTED: <jid>` on success
-or `TIMEOUT:` if no connection after 60s.
+or `TIMEOUT:` after 2 minutes.
 
-**If the output contains `QR_IMAGE:`**, use the `Read` tool on that file path to display
-the QR code image directly in the Claude Code interface so the user can scan it easily.
+**Always Read the `QR_IMAGE:` path** after the script runs to display the QR PNG inline.
 
 If the output contains `CONNECTED:`, confirm success. If `TIMEOUT:`, suggest retrying.
 
@@ -98,41 +94,22 @@ If the output contains `CONNECTED:`, confirm success. If `TIMEOUT:`, suggest ret
 
 Pairing code is an alternative to QR scanning — useful for headless setups.
 
-1. Treat `$ARGUMENTS` after `pair` as the phone number.
-   Example: `pair +55 11 99999-9999`
-
-```bash
-node --experimental-strip-types "$SCRIPT" pair "<raw phone argument>"
-```
-
 The script saves the phone, waits for the pairing code, then **polls for up to 2 minutes**
 for the connection to complete. It auto-refreshes codes when they rotate.
 
-2. If the output contains `PAIRING_CODE_READY:`, display it prominently:
-
-> **Your pairing code: `XXXX-XXXX`**
->
-> On WhatsApp, go to:
-> **Linked Devices → Link a Device → Link with phone number instead**
-> Enter the 8-digit code above.
-
-3. If `CONNECTED:` appears, confirm success.
-4. If `PAIRING_CODE_REFRESHED:`, show the new code (the old one expired).
-5. If `TIMEOUT:`, suggest the user retry with `/whatsapp:configure pair <phone>`.
+- If the output contains `PAIRING_CODE_READY:`, display the code prominently and instruct
+  the user: **Linked Devices → Link a Device → Link with phone number instead**.
+- If `CONNECTED:` appears, confirm success.
+- If `PAIRING_CODE_REFRESHED:`, show the new code (the old one expired).
+- If `TIMEOUT:`, suggest the user retry with `/whatsapp:configure pair <phone>`.
 
 ### `logout` — unlink the device
-
-```bash
-node --experimental-strip-types "$SCRIPT" logout
-```
 
 Present the script's output to the user.
 
 ### `clear` — remove phone from state
 
-```bash
-node --experimental-strip-types "$SCRIPT" clear
-```
+Confirms removal of the saved phone number and pairing code.
 
 ### `transcription <provider>` — configure voice message transcription
 
