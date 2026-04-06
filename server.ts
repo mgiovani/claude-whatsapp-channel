@@ -21,6 +21,7 @@ import {
   acquireLock,
   shutdown,
   checkApprovals,
+  checkPhonePairing,
   setChannelMode,
 } from './src/connection.ts'
 import { handleInbound } from './src/inbound.ts'
@@ -38,9 +39,10 @@ process.on('uncaughtException', err => {
   process.stderr.write(`whatsapp channel: uncaught exception: ${err}\n`)
 })
 
-// ─── Approval polling ─────────────────────────────────────────────────────────
+// ─── Polling ─────────────────────────────────────────────────────────────────
 
 setInterval(checkApprovals, 5000).unref()
+setInterval(() => void checkPhonePairing(), 3000).unref()
 
 // ─── MCP Server ───────────────────────────────────────────────────────────────
 

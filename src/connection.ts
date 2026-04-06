@@ -64,8 +64,10 @@ export const lidToPhone = new Map<string, string>()
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Re-read WHATSAPP_PHONE from .env at call time (not cached at import). */
-function readPhoneFromEnv(): string | undefined {
+/** Read phone from state.json, falling back to .env for migration. */
+function readPhone(): string | undefined {
+  const state = loadState()
+  if (state.phone) return state.phone
   try {
     const content = readFileSync(ENV_FILE, 'utf8')
     const m = content.match(/^WHATSAPP_PHONE=(.+)$/m)
@@ -244,20 +246,21 @@ export async function connectWhatsApp(hooks: {
         // Fall through to the hint below
       }
 
-      // Re-read phone from .env on each QR event so /whatsapp:configure pair
-      // takes effect without a server restart.
-      const phone = readPhoneFromEnv()
+      // Check for a phone number to request a pairing code.
+      // Guard: only request if creds aren't already registered (Baileys requirement).
+      const phone = readPhone()
 
-      if (phone) {
+      if (phone && !sock!.authState.creds.registered) {
         // Request a fresh pairing code on each QR rotation (codes expire with the QR).
+        lastPairingPhone = phone
         try {
           const code = await sock!.requestPairingCode(phone)
           saveState({ ...loadState(), pairingCode: code })
-          process.stderr.write(`whatsapp channel: pairing code ready — run /whatsapp:configure to see it\n`)
+          process.stderr.write(`whatsapp channel: pairing code ${code} — enter it on WhatsApp > Linked Devices > Link with phone number\n`)
         } catch (err) {
           process.stderr.write(`whatsapp channel: pairing code request failed: ${err}\n`)
         }
-      } else {
+      } else if (!phone) {
         process.stderr.write('whatsapp channel: QR ready — run /whatsapp:configure qr to display\n')
       }
     }
@@ -266,8 +269,9 @@ export async function connectWhatsApp(hooks: {
       isConnected = true
       reconnectAttempt = 0
       replaceCount = 0
+      lastPairingPhone = undefined
       const myJid = sock!.user?.id ?? ''
-      saveState({ status: 'connected', myJid })
+      saveState({ status: 'connected', myJid, phone: loadState().phone })
       try { rmSync(QR_FILE, { force: true }) } catch {}
       try { rmSync(QR_FILE.replace('.txt', '.png'), { force: true }) } catch {}
       process.stderr.write(`whatsapp channel: connected as ${myJid}\n`)
@@ -416,6 +420,32 @@ export function checkApprovals(): void {
         rmSync(file, { force: true }) // Remove anyway — don't loop on a broken send.
       },
     )
+  }
+}
+
+// ─── Phone pairing polling ───────────────────────────────────────────────────
+// Detects when a phone number is written to state.json and immediately
+// requests a pairing code instead of waiting for the next QR rotation.
+
+let lastPairingPhone: string | undefined
+
+export async function checkPhonePairing(): Promise<void> {
+  if (!sock) return
+  // Only request when awaiting QR and creds aren't already registered.
+  if (sock.authState.creds.registered) return
+  const state = loadState()
+  if (state.status !== 'awaiting_qr') return
+
+  const phone = state.phone
+  if (!phone || phone === lastPairingPhone) return
+
+  lastPairingPhone = phone
+  try {
+    const code = await sock.requestPairingCode(phone)
+    saveState({ ...loadState(), pairingCode: code })
+    process.stderr.write(`whatsapp channel: pairing code ${code} — enter it on WhatsApp > Linked Devices > Link with phone number\n`)
+  } catch (err) {
+    process.stderr.write(`whatsapp channel: pairing code request failed: ${err}\n`)
   }
 }
 

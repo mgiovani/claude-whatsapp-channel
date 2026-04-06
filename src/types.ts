@@ -48,6 +48,7 @@ export type WaState = {
   status: string
   myJid?: string
   pairingCode?: string
+  phone?: string
 }
 
 // ─── Permission relay schema ──────────────────────────────────────────────────

@@ -65,19 +65,20 @@ if (existsSync(accessFile)) {
 }
 
 // --- Phone config ---
-const envFile = join(STATE_DIR, '.env')
-if (existsSync(envFile)) {
+// Read from state.json (primary) with .env fallback for migration.
+let pairingPhone = ''
+if (existsSync(stateFile)) {
+  try {
+    const s = JSON.parse(readFileSync(stateFile, 'utf8'))
+    pairingPhone = s.phone ?? ''
+  } catch {}
+}
+if (!pairingPhone) {
+  const envFile = join(STATE_DIR, '.env')
   try {
     const content = readFileSync(envFile, 'utf8')
     const match = content.match(/^WHATSAPP_PHONE=(.+)$/m)
-    if (match) {
-      console.log(`PAIRING_PHONE: ${match[1]}`)
-    } else {
-      console.log('PAIRING_PHONE: none')
-    }
-  } catch {
-    console.log('PAIRING_PHONE: none')
-  }
-} else {
-  console.log('PAIRING_PHONE: none')
+    if (match) pairingPhone = match[1]
+  } catch {}
 }
+console.log(`PAIRING_PHONE: ${pairingPhone || 'none'}`)
