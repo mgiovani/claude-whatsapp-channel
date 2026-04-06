@@ -337,6 +337,7 @@ let isConnected = false
 let reconnectAttempt = 0
 let replaceCount = 0
 let shuttingDown = false
+let channelMode = false
 
 // Recent inbound messages — needed for media download, reactions, and quoting.
 // Keyed by message ID, capped to prevent unbounded growth.
@@ -1210,6 +1211,44 @@ mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
 // Matches "y/yes/n/no <5-letter-id>". ID alphabet: [a-km-z] (skips l).
 const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 
+// ─── Channel-mode detection ────────────────────────────────────────────────
+// Only connect to WhatsApp when Claude Code is running with --channels or
+// --dangerously-load-development-channels. When loaded as a plain plugin MCP
+// (no channel flag), the server starts tools-only so it doesn't fight an
+// active channel session for the WhatsApp connection.
+//
+// Detection: inspect the client capabilities sent during the MCP handshake.
+// Claude Code includes experimental['claude/channel'] when channels are active.
+// Three cases:
+//   - client sends experimental WITH 'claude/channel'  → channel mode, connect
+//   - client sends experimental WITHOUT 'claude/channel' → tools-only
+//   - client sends no experimental at all              → unknown, connect (safe fallback)
+
+mcp.oninitialized = () => {
+  const caps = mcp.getClientCapabilities()
+  const hasExperimental = !!caps?.experimental && Object.keys(caps.experimental).length > 0
+  const isChannel = !!caps?.experimental?.['claude/channel']
+
+  if (hasExperimental && !isChannel) {
+    process.stderr.write('whatsapp channel: tools-only mode (client has no channel capability)\n')
+    return
+  }
+
+  channelMode = true
+
+  if (!acquireLock()) {
+    process.stderr.write('whatsapp channel: another channel instance is running — tools-only mode\n')
+    channelMode = false
+    return
+  }
+
+  try { rmSync(QR_FILE, { force: true }) } catch {}
+  process.stderr.write('whatsapp channel: starting WhatsApp connection\n')
+  connectWhatsApp().catch(err =>
+    process.stderr.write(`whatsapp channel: initial connection failed: ${err}\n`),
+  )
+}
+
 // ─── Shutdown ─────────────────────────────────────────────────────────────────
 // When Claude Code closes the MCP connection, stdin gets EOF. Without this
 // the Baileys WS stays open as a zombie.
@@ -1217,10 +1256,12 @@ const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 function shutdown(): void {
   if (shuttingDown) return
   shuttingDown = true
-  releaseLock()
+  if (channelMode) {
+    releaseLock()
+    try { sock?.end(new Error('shutdown')) } catch {}
+  }
   process.stderr.write('whatsapp channel: shutting down\n')
   setTimeout(() => process.exit(0), 2000)
-  try { sock?.end(new Error('shutdown')) } catch {}
   void Promise.resolve().finally(() => process.exit(0))
 }
 
@@ -1233,21 +1274,7 @@ process.on('SIGINT', shutdown)
 
 mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
 
-// Check before connecting to MCP so Claude Code sees "failed to start" rather
-// than "server connected and died" — cleaner error surface for the user.
-if (!acquireLock()) {
-  process.stderr.write(
-    'whatsapp channel: another instance is already running — close the other Claude session first\n',
-  )
-  process.exit(1)
-}
-
+// WhatsApp connection is deferred to mcp.oninitialized, which runs after the
+// MCP handshake completes and client capabilities are available for channel
+// detection. acquireLock() and connectWhatsApp() are called from there.
 await mcp.connect(new StdioServerTransport())
-
-// Clean stale QR from previous session — prevents showing an expired code.
-try { rmSync(QR_FILE, { force: true }) } catch {}
-process.stderr.write('whatsapp channel: starting\n')
-
-connectWhatsApp().catch(err =>
-  process.stderr.write(`whatsapp channel: initial connection failed: ${err}\n`),
-)
