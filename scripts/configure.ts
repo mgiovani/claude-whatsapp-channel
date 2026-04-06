@@ -4,8 +4,8 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
-import { homedir } from 'os'
-import { execSync } from 'child_process'
+import { homedir, platform } from 'os'
+import { execSync, spawn } from 'child_process'
 
 const STATE_DIR = join(homedir(), '.claude', 'channels', 'whatsapp')
 const STATE_FILE = join(STATE_DIR, 'state.json')
@@ -35,6 +35,16 @@ function sleep(ms: number): Promise<void> {
 
 const POLL_INTERVAL = 2000
 const POLL_TIMEOUT = 120_000
+
+const isWSL = platform() === 'linux' && existsSync('/proc/version')
+  && readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft')
+
+function openImage(filePath: string): void {
+  const cmd = platform() === 'darwin' ? 'open' : isWSL ? 'wslview' : 'xdg-open'
+  try {
+    spawn(cmd, [filePath], { detached: true, stdio: 'ignore' }).unref()
+  } catch {}
+}
 
 // ─── Subcommands ─────────────────────────────────────────────────────────────
 
@@ -104,6 +114,8 @@ async function renderQr(QRCode: typeof import('qrcode').default): Promise<string
   return qrArt
 }
 
+const QR_TMP = '/tmp/whatsapp-qr.txt'
+
 async function qr(): Promise<void> {
   const QRCode = (await import('qrcode')).default
   const qrArt = await renderQr(QRCode)
@@ -115,46 +127,17 @@ async function qr(): Promise<void> {
     return
   }
 
+  writeFileSync(QR_TMP, qrArt)
+  openImage(QR_IMAGE)
   console.log('')
-  console.log('━━━ Scan this QR code ━━━')
   console.log(qrArt)
+  console.log(`QR_TEXT: ${QR_TMP}`)
   console.log(`QR_IMAGE: ${QR_IMAGE}`)
   console.log('')
-  console.log('Open WhatsApp > Linked Devices > Link a Device, then scan the QR above.')
-  console.log('Waiting for connection (auto-refreshes every ~20s)...')
-  console.log('Run /whatsapp:configure at any time to check connection status.')
-
-  let lastQr = existsSync(QR_FILE) ? readFileSync(QR_FILE, 'utf8').trim() : ''
-  const deadline = Date.now() + POLL_TIMEOUT
-
-  while (Date.now() < deadline) {
-    await sleep(POLL_INTERVAL)
-    const state = loadState()
-
-    if ((state.status as string) === 'connected') {
-      const jid = (state.myJid as string) ?? ''
-      console.log(`\nCONNECTED: ${jid}`)
-      console.log('Run /whatsapp:configure to check status and manage access.')
-      return
-    }
-
-    // Check for QR rotation
-    if (existsSync(QR_FILE)) {
-      const currentQr = readFileSync(QR_FILE, 'utf8').trim()
-      if (currentQr && currentQr !== lastQr) {
-        lastQr = currentQr
-        const freshArt = await renderQr(QRCode)
-        if (freshArt) {
-          console.log('\n━━━ QR code refreshed ━━━')
-          console.log(freshArt)
-          console.log('━━━ Scan with WhatsApp > Linked Devices > Link a Device ━━━')
-        }
-      }
-    }
-  }
-
-  console.log('\nTIMEOUT: No connection after 2 minutes.')
-  console.log('Run /whatsapp:configure qr to try again.')
+  console.log('━━ Scan with WhatsApp > Linked Devices > Link a Device ━━')
+  console.log('')
+  console.log('QR expires in ~60s. Run /whatsapp:configure qr for a fresh one.')
+  console.log('Run /whatsapp:configure to check connection status.')
 }
 
 async function pair(phoneArg: string): Promise<void> {

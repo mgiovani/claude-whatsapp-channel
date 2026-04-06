@@ -58,18 +58,22 @@ and give instructions:
 **If the output contains `CONNECTION: awaiting_qr`** (and no pairing code), the script
 automatically displays the QR code and polls for connection.
 
-**IMPORTANT — displaying the QR image:** The QR code in the Bash output will be
-collapsed. After the script runs, look for `QR_IMAGE:` in the output. Use the `Read`
-tool on that file path to display the QR PNG directly in the Claude Code interface.
-This is the primary way the user sees the QR code — always do this step.
+The script automatically opens the QR code image in the system's default image viewer
+(`open` on macOS, `wslview` on WSL, `xdg-open` on Linux). It also saves the QR text
+art to `/tmp/whatsapp-qr.txt`.
+
+**After the script finishes**, if a QR was displayed, **Read `/tmp/whatsapp-qr.txt`**
+and present it directly to the user. Then tell them:
+- Scan the QR from the image viewer that opened
+- Or press **Ctrl+O** (Cmd+O on Mac) on the Bash output above to expand the QR
+- Or run `cat /tmp/whatsapp-qr.txt` in another terminal to see the full QR
 
 **What next** — end with a concrete next step based on the status:
 - `awaiting_qr` with pairing code → show code as above (do not show QR)
-- `awaiting_qr` without pairing code → *"Press **Ctrl+O** (Cmd+O on Mac) on the Bash
-  output above to expand the QR code, then scan it with WhatsApp
-  (Linked Devices → Link a Device). If it expired, run `/whatsapp:configure qr`
-  for a fresh one. Or run `/whatsapp:configure pair +5511999999999` to use a
-  pairing code instead."*
+- `awaiting_qr` without pairing code → *"Scan the QR code, then run
+  `/whatsapp:configure` to check the connection. If the QR expired, run
+  `/whatsapp:configure qr` for a fresh one. Or run
+  `/whatsapp:configure pair +5511999999999` to use a pairing code instead."*
 - `disconnected:*` or `logged_out` → *"Restart the channel server, then run
   `/whatsapp:configure` again."*
 - `connected`, nobody allowed → *"Send a WhatsApp message from your phone. The channel
@@ -82,13 +86,12 @@ switching `dmPolicy` to `allowlist` so no new numbers can trigger pairing codes.
 
 ### `qr` — display QR code
 
-The script prints the QR code as UTF-8 block art, then **polls for up to 2 minutes**,
-auto-refreshing the QR when it rotates. It prints `CONNECTED: <jid>` on success
-or `TIMEOUT:` after 2 minutes.
+The script prints the QR code as UTF-8 block art once and exits immediately.
+It saves the QR art to `/tmp/whatsapp-qr.txt` and opens the PNG in the system viewer.
 
-**Always Read the `QR_IMAGE:` path** after the script runs to display the QR PNG inline.
-
-If the output contains `CONNECTED:`, confirm success. If `TIMEOUT:`, suggest retrying.
+**After the script finishes**, Read `/tmp/whatsapp-qr.txt` and present it to the user
+so they can see the full QR inline. Tell them the QR expires in ~60s and to run
+`/whatsapp:configure qr` for a fresh one if needed.
 
 ### `pair <phone>` — pairing code flow
 
