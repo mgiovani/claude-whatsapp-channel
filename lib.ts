@@ -146,6 +146,22 @@ export function extractText(msg: any): string {
   )
 }
 
+export function getContextInfo(msg: any): any | null {
+  const m = unwrapMessage(msg?.message)
+  if (!m) return null
+  return (
+    m.extendedTextMessage?.contextInfo ??
+    m.imageMessage?.contextInfo ??
+    m.videoMessage?.contextInfo ??
+    m.audioMessage?.contextInfo ??
+    m.documentMessage?.contextInfo ??
+    m.stickerMessage?.contextInfo ??
+    m.contactMessage?.contextInfo ??
+    m.locationMessage?.contextInfo ??
+    null
+  )
+}
+
 export function getMediaKind(msg: any): MediaKind | null {
   const m = unwrapMessage(msg?.message)
   if (!m) return null

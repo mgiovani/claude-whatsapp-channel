@@ -60,6 +60,7 @@ import {
   jidMatch,
   jidListIncludes,
   extractText,
+  getContextInfo,
   getMediaKind,
   getMediaMime,
   getMediaFileName,
@@ -836,7 +837,36 @@ async function handleInbound(msg: any): Promise<void> {
     return
   }
 
-  const content = text || (imagePath ? '(photo)' : kind ? `(${kind})` : '(message)')
+  // Extract quoted/replied-to context if present.
+  let quotedPrefix = ''
+  let quotedMeta: Record<string, string> = {}
+  const ctxInfo = getContextInfo(msg)
+  if (ctxInfo?.quotedMessage) {
+    const qText = extractText({ message: ctxInfo.quotedMessage })
+    const qKind = getMediaKind({ message: ctxInfo.quotedMessage })
+    const qSenderJid: string = ctxInfo.participant ?? ''
+    const qSenderName = qSenderJid ? qSenderJid.split('@')[0] : ''
+
+    let quoteBody: string
+    if (qText) {
+      const truncated = qText.length > 200 ? qText.slice(0, 200) + '…' : qText
+      quoteBody = `"${truncated}"`
+    } else if (qKind) {
+      quoteBody = `(${qKind})`
+    } else {
+      quoteBody = '(message)'
+    }
+
+    quotedPrefix = qSenderName
+      ? `[Replying to @${qSenderName}: ${quoteBody}]\n\n`
+      : `[Replying to: ${quoteBody}]\n\n`
+
+    if (ctxInfo.stanzaId) {
+      quotedMeta.quoted_message_id = ctxInfo.stanzaId
+    }
+  }
+
+  const content = quotedPrefix + (text || (imagePath ? '(photo)' : kind ? `(${kind})` : '(message)'))
 
   // image_path goes in meta only — an in-content annotation is forgeable by any
   // allowlisted sender typing that string.
@@ -852,6 +882,7 @@ async function handleInbound(msg: any): Promise<void> {
         ts: new Date((msg.messageTimestamp as number) * 1000).toISOString(),
         ...(imagePath ? { image_path: imagePath } : {}),
         ...attachmentMeta,
+        ...quotedMeta,
       },
     },
   }).catch(err =>
