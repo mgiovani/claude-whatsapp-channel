@@ -99,15 +99,7 @@ Scan the QR code with WhatsApp:
 - **iOS**: Settings → Linked Devices → Link a Device
 - **Android**: ⋮ → Linked Devices → Link a Device
 
-The session is saved to `~/.claude/channels/whatsapp/auth/` and persists across restarts.
-
-**Headless / no QR?** Use the pairing code flow instead:
-
-```
-/whatsapp:configure pair +5511999999999
-```
-
-Restart Claude. The channel requests a pairing code automatically — run `/whatsapp:configure` to see it, then enter it on WhatsApp under **Linked Devices → Link with phone number**.
+The session persists across restarts.
 
 ### Step 2 — Pair your phone number
 
