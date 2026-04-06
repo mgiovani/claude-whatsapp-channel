@@ -17,7 +17,7 @@ For production business use, see the official [WhatsApp Business Cloud API](http
 ## Features
 
 - **QR code linking** — scan once, session persists across restarts
-- **Pairing code** — headless linking without scanning (set `WHATSAPP_PHONE`)
+- **Pairing code** — headless linking without scanning (`/whatsapp:configure pair <phone>`)
 - **Access control** — allowlist with pairing codes, same pattern as the official Telegram channel
 - **Group support** — mention-triggered delivery in group chats
 - **Media handling** — images auto-downloaded, other attachments on demand
@@ -92,12 +92,18 @@ make dev
 In Claude, run:
 
 ```
-/whatsapp:configure qr
+/whatsapp:configure
 ```
 
-Scan the QR code with WhatsApp:
+A QR code appears in the terminal output. Press **Ctrl+O** (Cmd+O on Mac) to expand it, then scan with WhatsApp:
 - **iOS**: Settings → Linked Devices → Link a Device
 - **Android**: ⋮ → Linked Devices → Link a Device
+
+Alternatively, use a pairing code (no scanning needed):
+
+```
+/whatsapp:configure pair +5511999999999
+```
 
 The session persists across restarts.
 
@@ -176,7 +182,7 @@ All state lives in `~/.claude/channels/whatsapp/access.json`:
 |---------|-------------|
 | `/whatsapp:configure` | Check connection status |
 | `/whatsapp:configure qr` | Display QR code to link your phone |
-| `/whatsapp:configure pair <phone>` | Set phone for pairing code flow |
+| `/whatsapp:configure pair <phone>` | Link via pairing code (auto-generates within seconds) |
 | `/whatsapp:configure logout` | Unlink the device and clear auth |
 | `/whatsapp:access` | Show current access state |
 | `/whatsapp:access pair <code>` | Approve a pairing request |
@@ -227,7 +233,7 @@ Baileys WebSocket (server.ts)
 Claude Code session
 ```
 
-An MCP server (`server.ts` + `lib.ts`) maintains a persistent Baileys WebSocket, pushes incoming messages to Claude via `notifications/claude/channel`, and exposes the tools Claude calls to reply.
+An MCP server (`server.ts`) maintains a persistent Baileys WebSocket, pushes incoming messages to Claude via `notifications/claude/channel`, and exposes the tools Claude calls to reply.
 
 ---
 
