@@ -33,7 +33,8 @@ For production business use, consider the official [WhatsApp Business Cloud API]
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org) v22+ (Node.js required — Bun lacks WebSocket events that Baileys needs)
+- [Node.js](https://nodejs.org) v22+ (required for Baileys WebSocket support)
+- [Bun](https://bun.sh) v1.0+ (required for the plugin system install path only)
 - Claude Code v2.1.80+
 - A WhatsApp account (personal phone number)
 
@@ -193,7 +194,13 @@ All state lives in `~/.claude/channels/whatsapp/access.json`:
   "groups": {
     "120363xxxxxxxxx@g.us": { "requireMention": true, "allowFrom": [] }
   },
-  "pending": {}
+  "pending": {},
+  "ackReaction": "👀",
+  "textChunkLimit": 4096,
+  "chunkMode": "length",
+  "replyToMode": "first",
+  "documentThreshold": 4000,
+  "documentFormat": "auto"
 }
 ```
 
@@ -211,7 +218,7 @@ All state lives in `~/.claude/channels/whatsapp/access.json`:
 | `/whatsapp:access allow <jid>` | Add a JID to the allowlist directly |
 | `/whatsapp:access remove <jid>` | Remove a JID from the allowlist |
 | `/whatsapp:access policy <mode>` | Set DM policy: `pairing`, `allowlist`, or `disabled` |
-| `/whatsapp:access group add <groupJid>` | Enable a group (mention-gated by default) |
+| `/whatsapp:access group add <groupJid>` | Enable a group (mention-gated by default; `--no-mention` to skip; `--allow jid1,jid2` to restrict senders) |
 | `/whatsapp:access group rm <groupJid>` | Disable a group |
 
 ### Group support
@@ -241,6 +248,8 @@ Optional settings in `access.json` (set via `/whatsapp:access set`):
 | `chunkMode` | `length` | `length` (hard split) or `newline` (paragraph split) |
 | `replyToMode` | `first` | Which chunks get a quote-reply: `off`, `first`, `all` |
 | `mentionPatterns` | `[]` | Extra regex patterns for group mention detection |
+| `documentThreshold` | `4000` | Char length above which replies are sent as a file attachment (`0` = disabled, `-1` = always) |
+| `documentFormat` | `auto` | File format for document replies: `auto`, `md`, or `txt` |
 
 ---
 
@@ -266,7 +275,8 @@ State files in `~/.claude/channels/whatsapp/`:
 - `inbox/` — downloaded media files
 - `approved/` — approval signals from the access skill to the server
 - `qr.txt` — current QR code (transient, removed on connect)
-- `me.txt` — linked phone JID
+- `state.json` — connection state (status, linked JID, pairing code)
+- `server.pid` — lock file (prevents duplicate sessions)
 
 ---
 
