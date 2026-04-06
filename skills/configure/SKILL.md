@@ -24,15 +24,13 @@ via QR code or a pairing code. Auth state persists in
 
 Arguments passed: `$ARGUMENTS`
 
-Helper scripts live under the plugin's `scripts/` directory. Resolve the path once
-with a fallback before running any script:
+All subcommands are handled by a single script. Resolve the script path once:
 
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"
-PLUGIN_DIR="${PLUGIN_DIR:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+SCRIPT="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name configure.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null | sed 's|/scripts$||')}/scripts/configure.ts"
 ```
 
-If `PLUGIN_DIR` is empty after this, tell the user the plugin may not be installed correctly.
+If the script doesn't exist, tell the user the plugin may not be installed correctly.
 
 ---
 
@@ -40,12 +38,8 @@ If `PLUGIN_DIR` is empty after this, tell the user the plugin may not be install
 
 ### No args — show status and auto-display QR if awaiting
 
-Resolve `PLUGIN_DIR` (see above), then run the status script in a single call:
-
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"
-PLUGIN_DIR="${PLUGIN_DIR:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
-node --experimental-strip-types "$PLUGIN_DIR/status.ts"
+node --experimental-strip-types "$SCRIPT"
 ```
 
 Present the output to the user in a readable format. The output has structured
@@ -61,18 +55,22 @@ and give instructions — do NOT run the QR script:
 > **Linked Devices → Link a Device → Link with phone number instead**
 > Enter the 8-digit code above.
 >
-> After entering, run `/whatsapp:configure` to verify the connection.
+> The script is waiting and will detect the connection automatically.
 
 **If the output contains `CONNECTION: awaiting_qr`** (and no pairing code), also run
-the QR script immediately (see `qr` section below) so the user can scan without a
-second command.
+the QR subcommand immediately so the user can scan without a second command:
+
+```bash
+node --experimental-strip-types "$SCRIPT" qr
+```
 
 **What next** — end with a concrete next step based on the status:
 - `awaiting_qr` with pairing code → show code as above (do not show QR)
-- `awaiting_qr` without pairing code → *"Press Ctrl+O (Cmd+O on Mac) on the Bash output
-  above to expand the QR code, then scan it with WhatsApp.
-  If it expired, run `/whatsapp:configure qr` for a fresh one. Alternatively, run
-  `/whatsapp:configure pair +5511999999999` to use a pairing code instead."*
+- `awaiting_qr` without pairing code → *"Press **Ctrl+O** (Cmd+O on Mac) on the Bash
+  output above to expand the QR code, then scan it with WhatsApp
+  (Linked Devices → Link a Device). If it expired, run `/whatsapp:configure qr`
+  for a fresh one. Or run `/whatsapp:configure pair +5511999999999` to use a
+  pairing code instead."*
 - `disconnected:*` or `logged_out` → *"Restart the channel server, then run
   `/whatsapp:configure` again."*
 - `connected`, nobody allowed → *"Send a WhatsApp message from your phone. The channel
@@ -85,52 +83,61 @@ switching `dmPolicy` to `allowlist` so no new numbers can trigger pairing codes.
 
 ### `qr` — display QR code
 
-Resolve `PLUGIN_DIR` (see preamble above), then run the QR script in a single call:
-
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"
-PLUGIN_DIR="${PLUGIN_DIR:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
-node --experimental-strip-types "$PLUGIN_DIR/show-qr.ts"
+node --experimental-strip-types "$SCRIPT" qr
 ```
 
-The script prints the QR code as UTF-8 block art in stdout (collapsed by default).
+The script prints the QR code as UTF-8 block art, then **polls for up to 60s**,
+auto-refreshing the QR when it rotates. It prints `CONNECTED: <jid>` on success
+or `TIMEOUT:` if no connection after 60s.
+
 **Do NOT try to re-render or copy the QR code.** Instead, tell the user:
 
 > Press **Ctrl+O** (or **Cmd+O** on Mac) on the Bash output above to expand the full
 > QR code, then scan it with WhatsApp (Linked Devices > Link a Device).
-> Run `/whatsapp:configure` to verify the connection after scanning.
-> QR codes rotate every ~20s — run `/whatsapp:configure qr` for a fresh one if it expires.
+> The script auto-refreshes the QR and will detect the connection automatically.
+
+If the output contains `CONNECTED:`, confirm success. If `TIMEOUT:`, suggest retrying.
 
 ### `pair <phone>` — pairing code flow
 
 Pairing code is an alternative to QR scanning — useful for headless setups.
 
-1. Treat `$ARGUMENTS` after `pair` as the phone number (strip non-digits).
-   Example: `pair +55 11 99999-9999` → `55119999999`
-2. `mkdir -p ~/.claude/channels/whatsapp`
-3. Read existing `.env` if present; update or add the `WHATSAPP_PHONE=` line,
-   preserve other keys. Write back, no quotes around the value.
-4. `chmod 600 ~/.claude/channels/whatsapp/.env`
-5. Tell the user: *"Phone number saved. The server picks it up automatically on the
-   next QR rotation (~20s). Run `/whatsapp:configure` in a moment to see the pairing
-   code. On WhatsApp go to: Linked Devices → Link a Device → Link with phone number
-   instead."*
+1. Treat `$ARGUMENTS` after `pair` as the phone number.
+   Example: `pair +55 11 99999-9999`
+
+```bash
+node --experimental-strip-types "$SCRIPT" pair "<raw phone argument>"
+```
+
+The script saves the phone, waits for the pairing code, then **polls for up to 60s**
+for the connection to complete. It auto-refreshes codes when they rotate.
+
+2. If the output contains `PAIRING_CODE_READY:`, display it prominently:
+
+> **Your pairing code: `XXXX-XXXX`**
+>
+> On WhatsApp, go to:
+> **Linked Devices → Link a Device → Link with phone number instead**
+> Enter the 8-digit code above.
+
+3. If `CONNECTED:` appears, confirm success.
+4. If `PAIRING_CODE_REFRESHED:`, show the new code (the old one expired).
+5. If `TIMEOUT:`, suggest the user retry with `/whatsapp:configure pair <phone>`.
 
 ### `logout` — unlink the device
 
-Resolve `PLUGIN_DIR` (see preamble above), then run the logout script:
-
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"
-PLUGIN_DIR="${PLUGIN_DIR:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
-bash "$PLUGIN_DIR/logout.sh"
+node --experimental-strip-types "$SCRIPT" logout
 ```
 
 Present the script's output to the user.
 
-### `clear` — remove phone from .env
+### `clear` — remove phone from state
 
-Delete the `WHATSAPP_PHONE=` line (or the file if that's the only line).
+```bash
+node --experimental-strip-types "$SCRIPT" clear
+```
 
 ### `transcription <provider>` — configure voice message transcription
 
@@ -170,8 +177,7 @@ notification. Claude sees the transcript immediately without calling `download_a
 ## Implementation notes
 
 - The channels dir might not exist if the server hasn't run yet. Missing = not configured.
-- The server re-reads `.env` on each QR rotation. Phone changes take effect
-  automatically within ~20s (no restart needed).
+- Phone number is stored in `state.json` (not `.env`). The server polls for it every 3s.
 - `access.json` is re-read on every inbound message — policy changes take effect immediately.
 - QR codes expire quickly (~60s for first, ~20s for subsequent). If scanning fails, re-run
   `/whatsapp:configure qr` to get the next QR.
