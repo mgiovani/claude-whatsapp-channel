@@ -6,6 +6,7 @@ allowed-tools:
   - Read
   - Write
   - Bash(bash *)
+  - Bash(node *)
   - Bash(mkdir *)
   - Bash(chmod *)
 ---
@@ -27,7 +28,7 @@ Helper scripts live under the plugin's `scripts/` directory. Resolve the path on
 with a fallback before running any script:
 
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.sh -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
 ```
 
 If `PLUGIN_DIR` is empty after this, tell the user the plugin may not be installed correctly.
@@ -41,8 +42,8 @@ If `PLUGIN_DIR` is empty after this, tell the user the plugin may not be install
 Resolve `PLUGIN_DIR` (see above), then run the status script in a single call:
 
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.sh -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
-bash "$PLUGIN_DIR/status.sh"
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+node --experimental-strip-types "$PLUGIN_DIR/status.ts"
 ```
 
 Present the output to the user in a readable format. The output has structured
@@ -84,8 +85,8 @@ switching `dmPolicy` to `allowlist` so no new numbers can trigger pairing codes.
 Resolve `PLUGIN_DIR` (see preamble above), then run the QR script in a single call:
 
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.sh -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
-bash "$PLUGIN_DIR/show-qr.sh"
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+node --experimental-strip-types "$PLUGIN_DIR/show-qr.ts"
 ```
 
 The script renders the QR code and prints scan instructions. **Output its full
@@ -115,7 +116,7 @@ Pairing code is an alternative to QR scanning — useful for headless setups.
 Resolve `PLUGIN_DIR` (see preamble above), then run the logout script:
 
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.sh -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
 bash "$PLUGIN_DIR/logout.sh"
 ```
 
