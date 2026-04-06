@@ -1,4 +1,4 @@
-.PHONY: dev install clean test
+.PHONY: dev install clean test logout
 
 # Start Claude Code with the WhatsApp channel loaded for development
 dev:
@@ -11,6 +11,10 @@ install:
 # Run unit tests
 test:
 	bun test
+
+# Unlink the WhatsApp session and clear auth state
+logout:
+	node --experimental-strip-types scripts/configure.ts logout
 
 # Clear the plugin cache (forces re-cache from source on next start)
 clean:
