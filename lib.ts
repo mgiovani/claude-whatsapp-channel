@@ -268,8 +268,8 @@ export function toWhatsAppFormat(text: string): string {
   // Strikethrough: ~~text~~ => ~text~
   text = text.replace(/~~([^~\n]+)~~/g, '~$1~')
 
-  // Horizontal rules: standalone --- / *** / ___ => remove
-  text = text.replace(/^(-{3,}|\*{3,}|_{3,})\s*$/gm, '')
+  // Horizontal rules: standalone --- / *** / ___ => remove ([ \t]* avoids consuming trailing \n)
+  text = text.replace(/^(-{3,}|\*{3,}|_{3,})[ \t]*$/gm, '')
 
   // Restore bold placeholders
   text = text.replace(/\x01([^\x01]+)\x01/g, '*$1*')
