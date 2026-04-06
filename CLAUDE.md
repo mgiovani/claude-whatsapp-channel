@@ -5,7 +5,7 @@ WhatsApp channel plugin for Claude Code, built with Baileys.
 ## Stack
 
 - **Runtime**: Node.js (Baileys requires full `ws` WebSocket support — Bun lacks `upgrade`/`unexpected-response` events)
-- **Language**: TypeScript (single-file, `--experimental-strip-types`, no build step)
+- **Language**: TypeScript (`--experimental-strip-types`, no build step)
 - **WhatsApp**: `@whiskeysockets/baileys` v7 (WhatsApp Web multi-device)
 - **MCP**: `@modelcontextprotocol/sdk`
 - **Architecture**: Mirrors the official `telegram` and `discord` channels from `anthropics/claude-plugins-official`
@@ -13,9 +13,12 @@ WhatsApp channel plugin for Claude Code, built with Baileys.
 ## Project structure
 
 ```
-server.ts                  Single-file MCP server (~850 lines)
+server.ts                  MCP server (~1250 lines) — WhatsApp connection, MCP tools, message routing
+lib.ts                     Pure functions: access control, JID helpers, message parsing (~425 lines)
+lib.test.ts                Unit tests for lib.ts (bun:test)
 skills/configure/SKILL.md  /whatsapp:configure skill
 skills/access/SKILL.md     /whatsapp:access skill
+scripts/                   Shell helpers: logout.sh, show-qr.sh, status.sh
 .claude-plugin/plugin.json Plugin metadata
 .mcp.json                  MCP server config (node, uses ${CLAUDE_PLUGIN_ROOT})
 ```
@@ -55,7 +58,7 @@ pairing_code.txt Pairing code from WhatsApp (transient, if using pairing code fl
 
 ## Key design decisions
 
-- **Single file**: `server.ts` is self-contained, no `src/` or build pipeline. Matches the official plugin pattern.
+- **Two-file structure**: `server.ts` handles the MCP server and WhatsApp connection; `lib.ts` holds pure functions (access control, JID helpers, message parsing, formatting). No `src/` dir or build pipeline. Matches the official plugin pattern.
 - **Baileys v7**: The only TypeScript/Bun-native WhatsApp library. Uses WhatsApp's multi-device WebSocket protocol.
 - **Access control**: Identical pattern to the official Telegram channel. JIDs replace numeric Telegram IDs.
 - **Media**: Images auto-downloaded inline (like Telegram photos). Other media listed in notification meta; Claude calls `download_attachment` on demand.
@@ -92,6 +95,7 @@ claude --dangerously-load-development-channels server:whatsapp
 
 ## Reference implementations
 
-- Telegram channel (primary template): `~/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/telegram/server.ts`
-- Discord channel (download_attachment pattern): `~/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/discord/server.ts`
-- Fakechat (minimal reference): `~/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/fakechat/server.ts`
+The architecture mirrors the official Anthropic channel plugins:
+- [Telegram channel](https://github.com/anthropics/claude-plugins-official) — primary template (access control, pairing, message routing)
+- [Discord channel](https://github.com/anthropics/claude-plugins-official) — download_attachment pattern
+- [Fakechat](https://github.com/anthropics/claude-plugins-official) — minimal MCP channel reference

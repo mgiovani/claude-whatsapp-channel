@@ -49,10 +49,15 @@ Inside a Claude Code session:
 ```
 /plugin marketplace add mgiovani/claude-whatsapp-channel
 /plugin install whatsapp@mgiovani-claude-whatsapp-channel
-/reload-plugins
 ```
 
-Claude Code clones the repo, resolves `${CLAUDE_PLUGIN_ROOT}`, and loads the MCP server and skills automatically.
+Then start Claude with the channel active:
+
+```bash
+claude --dangerously-load-development-channels plugin:whatsapp@whatsapp-channel
+```
+
+> **Why the flag?** Channels are in research preview with an Anthropic-curated allowlist. Community plugins aren't on it, so this flag is required. `--channels` will show the channel as "listening" but messages won't arrive. `allowedChannelPlugins` is a managed-only setting (Team/Enterprise MDM only) — there's no user-level workaround.
 
 ### Manual fallback — settings.json
 
@@ -92,9 +97,13 @@ claude --dangerously-load-development-channels server:whatsapp
 
 ### Step 1 — Link your WhatsApp account
 
-Start Claude with the development channel flag:
+Start Claude with the channel active (use whichever matches your install):
 
 ```bash
+# Plugin system install
+claude --dangerously-load-development-channels plugin:whatsapp@whatsapp-channel
+
+# Development install (local checkout)
 claude --dangerously-load-development-channels server:whatsapp
 ```
 
@@ -150,13 +159,13 @@ Once your trusted numbers are paired, switch to `allowlist` mode so no new numbe
 
 ## Usage
 
-Once configured, start (or restart) Claude Code. If installed via the plugin system, the channel loads automatically. If using the manual/dev path, start Claude with the channel active:
+Once configured, start Claude Code with the channel active:
 
 ```bash
-# Plugin system install (automatic after /reload-plugins)
-# → no extra flags needed
+# Plugin system install
+claude --dangerously-load-development-channels plugin:whatsapp@whatsapp-channel
 
-# Development install
+# Development install (local checkout)
 claude --dangerously-load-development-channels server:whatsapp
 ```
 
@@ -264,7 +273,7 @@ Baileys WebSocket (in server.ts)
 Claude Code session
 ```
 
-The plugin is a single-file MCP server (`server.ts`) that:
+The plugin is an MCP server (`server.ts` + `lib.ts`) that:
 1. Maintains a Baileys WebSocket connection to WhatsApp
 2. Pushes incoming messages into Claude Code via `notifications/claude/channel`
 3. Exposes tools (reply, react, etc.) that Claude calls to send responses
@@ -287,6 +296,12 @@ The architecture is designed to support additional WhatsApp providers:
 
 - **whatsmeow** (Go) — production-grade, powers mautrix-whatsapp bridge
 - **WhatsApp Business Cloud API** (official) — zero ban risk, for business accounts
+
+---
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, testing, and PR guidelines.
 
 ---
 
