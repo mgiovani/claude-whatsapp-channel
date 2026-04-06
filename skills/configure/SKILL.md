@@ -102,6 +102,39 @@ Present the script's output to the user.
 
 Delete the `WHATSAPP_PHONE=` line (or the file if that's the only line).
 
+### `transcription <provider>` — configure voice message transcription
+
+Automatically transcribes inbound voice messages and prepends the text to Claude's
+notification. Claude sees the transcript immediately without calling `download_attachment`.
+
+**Available providers:**
+
+| Provider | Key required | Default model | Notes |
+|---|---|---|---|
+| `groq` | `GROQ_API_KEY` | `whisper-large-v3-turbo` | Fast, generous free tier — recommended |
+| `openai` | `OPENAI_API_KEY` | `whisper-1` | OpenAI hosted Whisper |
+| `none` | — | — | Disable transcription (default) |
+
+**Steps:**
+
+1. Parse `$ARGUMENTS` after `transcription` as `<provider>` and optionally `<api-key>`.
+   Example: `transcription groq gsk_abc123` → provider=`groq`, key=`gsk_abc123`
+   Example: `transcription openai` → provider=`openai`, no key supplied
+   Example: `transcription none` → disable transcription
+2. `mkdir -p ~/.claude/channels/whatsapp`
+3. Read existing `.env` if present. Update or add:
+   - `WHATSAPP_TRANSCRIPTION_PROVIDER=<provider>`
+   - If an API key was provided: add/update the appropriate key line
+     (`GROQ_API_KEY=...` or `OPENAI_API_KEY=...`)
+   - Preserve all other existing lines.
+4. Write back, no quotes around values. `chmod 600 ~/.claude/channels/whatsapp/.env`
+5. If provider is `none`: tell the user transcription is disabled (default behavior restored).
+6. If a remote provider was set: tell the user transcription is enabled and note that a
+   server restart or `/reload-plugins` is required for changes to take effect.
+
+**Optional model override:** Users can also manually add
+`WHATSAPP_TRANSCRIPTION_MODEL=whisper-large-v3` to `.env` to override the default model.
+
 ---
 
 ## Implementation notes

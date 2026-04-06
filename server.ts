@@ -66,6 +66,7 @@ import {
   getMediaFileName,
   mimeToExt,
   chunk,
+  toWhatsAppFormat,
   storeRecent,
   assertSendable,
   gate,
@@ -93,6 +94,60 @@ try {
 
 // Optional: phone number for pairing-code flow (E.164 digits only, no +).
 const WHATSAPP_PHONE = process.env.WHATSAPP_PHONE
+
+// Transcription provider config. Set WHATSAPP_TRANSCRIPTION_PROVIDER in .env to enable.
+const TRANSCRIPTION_PROVIDER = process.env.WHATSAPP_TRANSCRIPTION_PROVIDER ?? 'none'
+const TRANSCRIPTION_MODEL = process.env.WHATSAPP_TRANSCRIPTION_MODEL
+
+const TRANSCRIPTION_PROVIDERS: Record<string, { url: string; keyEnv: string; defaultModel: string }> = {
+  groq: {
+    url: 'https://api.groq.com/openai/v1/audio/transcriptions',
+    keyEnv: 'GROQ_API_KEY',
+    defaultModel: 'whisper-large-v3-turbo',
+  },
+  openai: {
+    url: 'https://api.openai.com/v1/audio/transcriptions',
+    keyEnv: 'OPENAI_API_KEY',
+    defaultModel: 'whisper-1',
+  },
+}
+
+async function transcribeAudio(buffer: Buffer, mime?: string): Promise<string | null> {
+  const provider = TRANSCRIPTION_PROVIDERS[TRANSCRIPTION_PROVIDER]
+  if (!provider) return null
+
+  const apiKey = process.env[provider.keyEnv]
+  if (!apiKey) {
+    process.stderr.write(`whatsapp channel: transcription: ${provider.keyEnv} not set\n`)
+    return null
+  }
+
+  try {
+    const ext = mime?.includes('ogg') ? 'ogg' : mime?.includes('mp4') ? 'm4a' : mime?.includes('mpeg') ? 'mp3' : 'ogg'
+    const blob = new Blob([buffer], { type: mime ?? 'audio/ogg' })
+    const form = new FormData()
+    form.append('file', blob, `voice.${ext}`)
+    form.append('model', TRANSCRIPTION_MODEL ?? provider.defaultModel)
+    form.append('response_format', 'json')
+
+    const res = await fetch(provider.url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    })
+
+    if (!res.ok) {
+      process.stderr.write(`whatsapp channel: transcription failed: ${res.status} ${await res.text()}\n`)
+      return null
+    }
+
+    const json = await res.json() as { text?: string }
+    return json.text?.trim() || null
+  } catch (err) {
+    process.stderr.write(`whatsapp channel: transcription error: ${err}\n`)
+    return null
+  }
+}
 
 // Last-resort safety net — without these the process dies silently on any
 // unhandled promise rejection. With them it logs and keeps serving tools.
@@ -154,6 +209,15 @@ function assertAllowedChat(chat_id: string): void {
   }
   throw new Error(`chat ${chat_id} is not allowlisted — add via /whatsapp:access`)
 }
+
+// ─── Pending Permission Requests ──────────────────────────────────────────────
+// Track outbound permission request messages so we can correlate emoji reactions
+// (✅/❌) back to the original request_id. Entries auto-expire after 5 minutes.
+const PERMISSION_TTL_MS = 5 * 60 * 1000
+const pendingPermissions = new Map<string, { request_id: string; timer: ReturnType<typeof setTimeout> }>()
+
+const APPROVE_EMOJI = new Set(['✅', '👍', '👍🏻', '👍🏼', '👍🏽', '👍🏾', '👍🏿'])
+const DENY_EMOJI = new Set(['❌', '👎', '👎🏻', '👎🏼', '👎🏽', '👎🏾', '👎🏿'])
 
 // ─── Approval Polling ─────────────────────────────────────────────────────────
 // /whatsapp:access pair <code> drops a file at approved/<senderId> with chatId
@@ -400,6 +464,32 @@ async function connectWhatsApp(): Promise<void> {
     }
   })
 
+  // ─── Permission Reaction Listener ────────────────────────────────────────────
+  // Catch emoji reactions on permission request messages and translate them into
+  // permission verdicts. ✅/👍 → allow, ❌/👎 → deny.
+  sock.ev.on('messages.reaction', (reactions) => {
+    for (const { key, reaction } of reactions) {
+      const msgId = key.id
+      if (!msgId) continue
+      const pending = pendingPermissions.get(msgId)
+      if (!pending) continue
+
+      const emoji = reaction.text || ''
+      let behavior: 'allow' | 'deny' | null = null
+      if (APPROVE_EMOJI.has(emoji)) behavior = 'allow'
+      else if (DENY_EMOJI.has(emoji)) behavior = 'deny'
+      if (!behavior) continue
+
+      void mcp.notification({
+        method: 'notifications/claude/channel/permission',
+        params: { request_id: pending.request_id, behavior },
+      }).catch(err => process.stderr.write(`whatsapp channel: reaction verdict failed: ${err}\n`))
+
+      clearTimeout(pending.timer)
+      pendingPermissions.delete(msgId)
+    }
+  })
+
 }
 
 // ─── MCP Server ───────────────────────────────────────────────────────────────
@@ -534,7 +624,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 
           if (i > 0) await new Promise(r => setTimeout(r, 500)) // rate-limit chunks
 
-          const sent = await sock!.sendMessage(chat_id, { text: chunks[i] }, opts)
+          const sent = await sock!.sendMessage(chat_id, { text: toWhatsAppFormat(chunks[i]) }, opts)
           const sentId = sent?.key?.id
           if (sentId) {
             sentIds.push(sentId)
@@ -795,6 +885,7 @@ async function handleInbound(msg: any): Promise<void> {
 
   let imagePath: string | undefined
   let attachmentMeta: Record<string, string> = {}
+  let transcription: string | undefined
 
   // Auto-download images inline (matches Telegram's photo behaviour).
   if (kind === 'image') {
@@ -809,6 +900,33 @@ async function handleInbound(msg: any): Promise<void> {
       imagePath = path
     } catch (err) {
       process.stderr.write(`whatsapp channel: image download failed: ${err}\n`)
+    }
+  } else if (kind === 'audio' && TRANSCRIPTION_PROVIDER !== 'none') {
+    // Auto-download + transcribe audio when a provider is configured.
+    // attachment_file_id is always included so Claude can still call download_attachment.
+    const mime = getMediaMime(msg)
+    const docName = getMediaFileName(msg)
+    attachmentMeta = {
+      attachment_file_id: msgId,
+      attachment_kind: kind,
+      ...(mime ? { attachment_mime: mime } : {}),
+      ...(docName ? { attachment_name: docName } : {}),
+    }
+    try {
+      const buffer = await downloadMediaMessage(
+        msg, 'buffer', {},
+        { logger: pino({ level: 'silent' }), reuploadRequest: sock!.updateMediaMessage },
+      ) as Buffer
+      const transcript = await transcribeAudio(buffer, mime)
+      if (transcript) {
+        transcription = transcript
+        // Save to inbox so download_attachment still works.
+        mkdirSync(INBOX_DIR, { recursive: true })
+        const audioPath = join(INBOX_DIR, `${Date.now()}-${msgId.replace(/[^a-zA-Z0-9]/g, '').slice(-8)}.ogg`)
+        writeFileSync(audioPath, buffer)
+      }
+    } catch (err) {
+      process.stderr.write(`whatsapp channel: audio download/transcription failed: ${err}\n`)
     }
   } else if (kind) {
     // Non-image media: list in meta so Claude can call download_attachment on demand.
@@ -866,7 +984,11 @@ async function handleInbound(msg: any): Promise<void> {
     }
   }
 
-  const content = quotedPrefix + (text || (imagePath ? '(photo)' : kind ? `(${kind})` : '(message)'))
+  const content = quotedPrefix + (
+    text
+    || (transcription ? `[Voice message transcription]\n${transcription}\n\n(Original audio available via download_attachment)` : '')
+    || (imagePath ? '(photo)' : kind ? `(${kind})` : '(message)')
+  )
 
   // image_path goes in meta only — an in-content annotation is forgeable by any
   // allowlisted sender typing that string.
@@ -912,12 +1034,25 @@ mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
     const access = loadAccess()
     const targets = access.allowFrom.filter(jid => jid.endsWith('@s.whatsapp.net'))
     if (targets.length === 0) return
+
+    const preview = params.input_preview.length > 500
+      ? params.input_preview.slice(0, 500) + '…'
+      : params.input_preview
     const text =
-      `Claude wants to run *${params.tool_name}*: ${params.description}\n` +
-      `\`\`\`\n${params.input_preview}\n\`\`\`\n` +
-      `Reply *yes ${params.request_id}* or *no ${params.request_id}*`
+      `🔐 *Permission Request*\n\n` +
+      `Claude wants to run *${params.tool_name}*\n` +
+      `${params.description}\n\n` +
+      `\`\`\`\n${preview}\n\`\`\`\n\n` +
+      `React ✅ to approve or ❌ to deny\n` +
+      `_or reply *yes ${params.request_id}* / *no ${params.request_id}*_`
+
     for (const jid of targets) {
-      await sock!.sendMessage(jid, { text })
+      const sent = await sock!.sendMessage(jid, { text })
+      const sentId = sent?.key?.id
+      if (sentId) {
+        const timer = setTimeout(() => pendingPermissions.delete(sentId), PERMISSION_TTL_MS)
+        pendingPermissions.set(sentId, { request_id: params.request_id, timer })
+      }
     }
   } catch (err) {
     process.stderr.write(`whatsapp channel: permission relay failed: ${err}\n`)
