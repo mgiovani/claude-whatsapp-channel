@@ -1016,7 +1016,9 @@ async function handleInbound(msg: any): Promise<void> {
 // Declared in capabilities.experimental['claude/channel/permission'].
 // When Claude wants to run a tool, Claude Code sends a permission_request
 // notification here. We forward it to all allowlisted DM contacts.
-// Those contacts can reply "yes <id>" or "no <id>" to approve or deny.
+// Users can approve/deny via:
+//   1. Emoji reaction on the request message (✅/👍 = allow, ❌/👎 = deny)
+//   2. Text reply: "yes <id>" or "no <id>" (fallback)
 
 const PermissionRequestSchema = z.object({
   method: z.literal('notifications/claude/channel/permission_request'),
@@ -1059,7 +1061,7 @@ mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
   }
 })
 
-// Regex to detect permission verdicts from inbound messages.
+// Text-based fallback for permission verdicts (reaction-based approval is primary).
 // Matches "y/yes/n/no <5-letter-id>". ID alphabet: [a-km-z] (skips l).
 const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 
