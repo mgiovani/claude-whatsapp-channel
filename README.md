@@ -6,37 +6,32 @@ Built on [Baileys](https://github.com/whiskeysockets/Baileys) (WhatsApp Web mult
 
 ---
 
-## ⚠️ Important disclaimer
+## ⚠️ Disclaimer
 
-This plugin uses an **unofficial** WhatsApp client library (Baileys). Using unofficial clients may violate [Meta's Terms of Service](https://www.whatsapp.com/legal/terms-of-service). Account bans are possible. Use this plugin:
+This plugin uses an **unofficial** WhatsApp client (Baileys). This may violate [Meta's Terms of Service](https://www.whatsapp.com/legal/terms-of-service). Account bans are possible. Use only with your own personal account, at low volume, and at your own risk.
 
-- Only with your own personal WhatsApp account
-- At low volume (personal assistant use, not bulk messaging)
-- At your own risk
-
-For production business use, consider the official [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/) instead.
+For production business use, see the official [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/).
 
 ---
 
 ## Features
 
-- **QR code linking** — scan once, session persists across Claude Code restarts
+- **QR code linking** — scan once, session persists across restarts
 - **Pairing code** — headless linking without scanning (set `WHATSAPP_PHONE`)
-- **Access control** — allowlist with pairing codes, same as official Telegram channel
+- **Access control** — allowlist with pairing codes, same pattern as the official Telegram channel
 - **Group support** — mention-triggered delivery in group chats
 - **Media handling** — images auto-downloaded, other attachments on demand
 - **Full tool set** — `reply`, `react`, `edit_message`, `download_attachment`
 - **Auto-reconnect** — exponential backoff on disconnects
-- **Rate limiting** — built-in delays between message chunks
 
 ---
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org) v22+ (required for Baileys WebSocket support)
-- [Bun](https://bun.sh) v1.0+ (required for the plugin system install path only)
+- [Node.js](https://nodejs.org) v22+
+- [Bun](https://bun.sh) v1.0+ (plugin system install path only)
 - Claude Code v2.1.80+
-- A WhatsApp account (personal phone number)
+- A personal WhatsApp account
 
 ---
 
@@ -57,11 +52,9 @@ Then start Claude with the channel active:
 claude --dangerously-load-development-channels plugin:whatsapp@whatsapp-channel
 ```
 
-> **Why the flag?** Channels are in research preview with an Anthropic-curated allowlist. Community plugins aren't on it, so this flag is required. `--channels` will show the channel as "listening" but messages won't arrive. `allowedChannelPlugins` is a managed-only setting (Team/Enterprise MDM only) — there's no user-level workaround.
+> **Why the flag?** Channels are in research preview on an Anthropic-curated allowlist. Community plugins aren't on it, so this flag is required. `--channels` alone will show the channel as "listening" but messages won't arrive.
 
-### Manual fallback — settings.json
-
-If you prefer to manage the installation yourself:
+### Manual — settings.json
 
 ```bash
 git clone https://github.com/mgiovani/claude-whatsapp-channel
@@ -69,7 +62,7 @@ cd claude-whatsapp-channel
 npm install
 ```
 
-Then add to `~/.claude/settings.json`:
+Add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -92,63 +85,45 @@ make dev
 
 ---
 
-## Setup
+## Setup (one-time)
 
 ### Step 1 — Link your WhatsApp account
 
-Start Claude with the channel active (use whichever matches your install):
-
-```bash
-# Plugin system install
-claude --dangerously-load-development-channels plugin:whatsapp@whatsapp-channel
-
-# Development install (local checkout)
-claude --dangerously-load-development-channels server:whatsapp
-```
-
-Then in Claude, run:
+In Claude, run:
 
 ```
 /whatsapp:configure qr
 ```
 
-This displays a QR code in your terminal. Scan it with WhatsApp:
-- **iOS**: WhatsApp → Settings → Linked Devices → Link a Device
-- **Android**: WhatsApp → ⋮ → Linked Devices → Link a Device
+Scan the QR code with WhatsApp:
+- **iOS**: Settings → Linked Devices → Link a Device
+- **Android**: ⋮ → Linked Devices → Link a Device
 
 The session is saved to `~/.claude/channels/whatsapp/auth/` and persists across restarts.
 
-### Step 1 (alternative) — Pairing code
-
-If you can't scan a QR (headless server, remote setup):
+**Headless / no QR?** Use the pairing code flow instead:
 
 ```
 /whatsapp:configure pair +5511999999999
 ```
 
-Then restart Claude. When the channel starts, it requests a pairing code automatically. Run `/whatsapp:configure` to see it, then enter it on WhatsApp under **Linked Devices → Link a Device → Link with phone number instead**.
+Restart Claude. The channel requests a pairing code automatically — run `/whatsapp:configure` to see it, then enter it on WhatsApp under **Linked Devices → Link with phone number**.
 
 ### Step 2 — Pair your phone number
 
-From your phone, send **any message** to your own linked WhatsApp number (or to any WhatsApp from another number you want to authorize).
+Send any message from your phone to the linked WhatsApp number. The channel replies with a pairing code:
 
-The channel replies with:
 ```
 Pairing required — run in Claude Code:
 
 /whatsapp:access pair a3f9b2
 ```
 
-In Claude Code, run:
-```
-/whatsapp:access pair a3f9b2
-```
-
-You'll receive "Paired! Say hi to Claude." on WhatsApp within ~5 seconds.
+Run that in Claude Code. You'll receive "Paired! Say hi to Claude." on WhatsApp within ~5 seconds.
 
 ### Step 3 — Lock it down (recommended)
 
-Once your trusted numbers are paired, switch to `allowlist` mode so no new numbers can pair:
+Once your trusted numbers are paired, switch to `allowlist` mode:
 
 ```
 /whatsapp:access policy allowlist
@@ -157,16 +132,6 @@ Once your trusted numbers are paired, switch to `allowlist` mode so no new numbe
 ---
 
 ## Usage
-
-Once configured, start Claude Code with the channel active:
-
-```bash
-# Plugin system install
-claude --dangerously-load-development-channels plugin:whatsapp@whatsapp-channel
-
-# Development install (local checkout)
-claude --dangerously-load-development-channels server:whatsapp
-```
 
 Send a WhatsApp message from a paired number. Claude receives it as:
 
@@ -188,7 +153,7 @@ Claude uses the **reply tool** to respond — messages go directly to WhatsApp.
 | `reply(chat_id, text, reply_to?, files?)` | Send text with optional quote-reply and file attachments |
 | `react(chat_id, message_id, emoji)` | Add emoji reaction to a message |
 | `edit_message(chat_id, message_id, text)` | Edit a previously sent message (no push notification) |
-| `download_attachment(message_id)` | Download media attachment to local inbox, returns file path |
+| `download_attachment(message_id)` | Download media to local inbox, returns file path |
 
 ---
 
@@ -217,7 +182,7 @@ All state lives in `~/.claude/channels/whatsapp/access.json`:
 
 | Command | Description |
 |---------|-------------|
-| `/whatsapp:configure` | Check connection status and access policy |
+| `/whatsapp:configure` | Check connection status |
 | `/whatsapp:configure qr` | Display QR code to link your phone |
 | `/whatsapp:configure pair <phone>` | Set phone for pairing code flow |
 | `/whatsapp:configure logout` | Unlink the device and clear auth |
@@ -227,18 +192,16 @@ All state lives in `~/.claude/channels/whatsapp/access.json`:
 | `/whatsapp:access allow <jid>` | Add a JID to the allowlist directly |
 | `/whatsapp:access remove <jid>` | Remove a JID from the allowlist |
 | `/whatsapp:access policy <mode>` | Set DM policy: `pairing`, `allowlist`, or `disabled` |
-| `/whatsapp:access group add <groupJid>` | Enable a group (mention-gated by default; `--no-mention` to skip; `--allow jid1,jid2` to restrict senders) |
+| `/whatsapp:access group add <groupJid>` | Enable a group (mention-gated by default; `--no-mention` to disable; `--allow jid1,jid2` to restrict senders) |
 | `/whatsapp:access group rm <groupJid>` | Disable a group |
 
-### Group support
-
-To allow a group chat, add it to the access config:
+### Groups
 
 ```
 /whatsapp:access group add 120363xxxxxxxxx@g.us
 ```
 
-By default, only messages that @mention your linked number (or reply to Claude's messages) are delivered. To disable the mention requirement:
+By default, only messages that @mention your linked number (or reply to Claude's messages) are delivered. To disable the mention gate:
 
 ```
 /whatsapp:access group add 120363xxxxxxxxx@g.us --no-mention
@@ -248,7 +211,7 @@ By default, only messages that @mention your linked number (or reply to Claude's
 
 ## Configuration
 
-Optional settings in `access.json` (set via `/whatsapp:access set`):
+Optional settings via `/whatsapp:access set`:
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -257,8 +220,8 @@ Optional settings in `access.json` (set via `/whatsapp:access set`):
 | `chunkMode` | `length` | `length` (hard split) or `newline` (paragraph split) |
 | `replyToMode` | `first` | Which chunks get a quote-reply: `off`, `first`, `all` |
 | `mentionPatterns` | `[]` | Extra regex patterns for group mention detection |
-| `documentThreshold` | `4000` | Char length above which replies are sent as a file attachment (`0` = disabled, `-1` = always) |
-| `documentFormat` | `auto` | File format for document replies: `auto`, `md`, or `txt` |
+| `documentThreshold` | `4000` | Char length above which replies become a file attachment (`0` = off, `-1` = always) |
+| `documentFormat` | `auto` | Format for document replies: `auto`, `md`, or `txt` |
 
 ---
 
@@ -266,38 +229,19 @@ Optional settings in `access.json` (set via `/whatsapp:access set`):
 
 ```
 WhatsApp (your phone)
-    ↕ (WhatsApp Web multi-device protocol)
-Baileys WebSocket (in server.ts)
-    ↕ (stdio MCP protocol)
+    ↕ WhatsApp Web multi-device protocol
+Baileys WebSocket (server.ts)
+    ↕ stdio MCP protocol
 Claude Code session
 ```
 
-The plugin is an MCP server (`server.ts` + `lib.ts`) that:
-1. Maintains a Baileys WebSocket connection to WhatsApp
-2. Pushes incoming messages into Claude Code via `notifications/claude/channel`
-3. Exposes tools (reply, react, etc.) that Claude calls to send responses
-
-State files in `~/.claude/channels/whatsapp/`:
-- `auth/` — Baileys session (multi-file auth state)
-- `access.json` — access control (managed by `/whatsapp:access`)
-- `.env` — optional config (`WHATSAPP_PHONE`)
-- `inbox/` — downloaded media files
-- `approved/` — approval signals from the access skill to the server
-- `qr.txt` — current QR code (transient, removed on connect)
-- `state.json` — connection state (status, linked JID, pairing code)
-- `server.pid` — lock file (prevents duplicate sessions)
-
----
-
-## Future providers
-
-The architecture is designed to support the official [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/) as an alternative provider (zero ban risk, for business accounts).
+An MCP server (`server.ts` + `lib.ts`) maintains a persistent Baileys WebSocket, pushes incoming messages to Claude via `notifications/claude/channel`, and exposes the tools Claude calls to reply.
 
 ---
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, testing, and PR guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, testing, and PR guidelines.
 
 ---
 
@@ -305,4 +249,4 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup,
 
 Apache 2.0 — see [LICENSE](LICENSE).
 
-This project is not affiliated with or endorsed by WhatsApp or Meta.
+Not affiliated with or endorsed by WhatsApp or Meta.
