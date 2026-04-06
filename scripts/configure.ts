@@ -93,7 +93,7 @@ async function renderQr(QRCode: typeof import('qrcode').default): Promise<string
   if (!existsSync(QR_FILE)) return ''
   const qrData = readFileSync(QR_FILE, 'utf8').trim()
   if (!qrData) return ''
-  const qrArt = await QRCode.toString(qrData, { type: 'utf8', margin: 3 })
+  const qrArt = await QRCode.toString(qrData, { type: 'utf8', margin: 2 })
   await QRCode.toFile(QR_IMAGE, qrData, { width: 600, margin: 2 })
   return qrArt
 }
