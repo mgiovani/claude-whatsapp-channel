@@ -13,9 +13,23 @@ WhatsApp channel plugin for Claude Code, built with Baileys.
 ## Project structure
 
 ```
-server.ts                  MCP server (~1250 lines) — WhatsApp connection, MCP tools, message routing
-lib.ts                     Pure functions: access control, JID helpers, message parsing (~425 lines)
-lib.test.ts                Unit tests for lib.ts (bun:test)
+server.ts                  Entry point (~110 lines) — wires modules, creates MCP server
+src/
+  types.ts                 Shared types + Zod schemas (Access, GateResult, WaState, PermissionRequestSchema)
+  constants.ts             All constants (limits, MIME maps, ext sets, emoji sets, regexes)
+  config.ts                STATE_DIR paths, .env loading, transcription provider config
+  baileys.ts               CJS/ESM interop for @whiskeysockets/baileys
+  jid.ts                   Pure JID helpers (safeName, bareJid, isLidJid, jidMatch, …)
+  message.ts               Pure message helpers (unwrapMessage, extractText, getMediaKind, …)
+  format.ts                Text formatting (chunk, toWhatsAppFormat, pickDocumentFilename, …)
+  util.ts                  Generic map helper (storeRecent)
+  access.ts                Access I/O (loadAccess, saveAccess) + gate logic + state I/O
+  security.ts              assertSendable
+  connection.ts            WASocket lifecycle, shared state, LID cache, lock, shutdown
+  inbound.ts               handleInbound, isMentioned, transcribeAudio
+  tools.ts                 registerTools(mcp) — reply, react, download_attachment, edit_message
+  permissions.ts           registerPermissionHandlers(mcp) — permission relay
+  *.test.ts                Unit tests co-located with each pure module (bun:test)
 skills/configure/SKILL.md  /whatsapp:configure skill
 skills/access/SKILL.md     /whatsapp:access skill
 scripts/                   Shell helpers: logout.sh, show-qr.sh, status.sh
@@ -57,7 +71,7 @@ server.pid       Lock file (prevents duplicate sessions)
 
 ## Key design decisions
 
-- **Two-file structure**: `server.ts` handles the MCP server and WhatsApp connection; `lib.ts` holds pure functions (access control, JID helpers, message parsing, formatting). No `src/` dir or build pipeline. Matches the official plugin pattern.
+- **Module structure**: `server.ts` is a thin entry point (~110 lines) that wires together modules under `src/`. Pure functions (JID helpers, message parsing, formatting, gate logic) live in leaf modules with co-located tests. Stateful concerns (WhatsApp connection, shared maps, lock) are isolated in `connection.ts`. No build pipeline — `--experimental-strip-types` handles TypeScript at runtime.
 - **Baileys v7**: The only TypeScript/Bun-native WhatsApp library. Uses WhatsApp's multi-device WebSocket protocol.
 - **Access control**: Identical pattern to the official Telegram channel. JIDs replace numeric Telegram IDs.
 - **Media**: Images auto-downloaded inline (like Telegram photos). Other media listed in notification meta; Claude calls `download_attachment` on demand.
