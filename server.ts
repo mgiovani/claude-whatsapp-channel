@@ -1188,7 +1188,7 @@ mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
       `Claude wants to run *${params.tool_name}*\n` +
       `${params.description}\n\n` +
       `${preview}\n\n` +
-      `React ✅ to approve or ❌ to deny\n` +
+      `React 👍 to approve or 👎 to deny\n` +
       `_or reply *yes ${params.request_id}* / *no ${params.request_id}*_`
 
     for (const jid of targets) {
