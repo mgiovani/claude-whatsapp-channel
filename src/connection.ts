@@ -22,6 +22,7 @@ import {
   makeCacheableSignalKeyStore,
   type WASocket,
 } from './baileys.ts'
+import QRCode from 'qrcode'
 import { bareJid, isLidJid } from './jid.ts'
 import { loadAccess, saveAccess, loadState, saveState } from './access.ts'
 import { storeRecent } from './util.ts'
@@ -231,6 +232,17 @@ export async function connectWhatsApp(hooks: {
       mkdirSync(STATE_DIR, { recursive: true })
       writeFileSync(QR_FILE, qr)
       saveState({ ...loadState(), status: 'awaiting_qr' })
+
+      // Render QR to terminal immediately so the user can scan without running any command.
+      try {
+        const qrArt = await QRCode.toString(qr, { type: 'utf8', margin: 1 })
+        process.stderr.write('\n━━━  WhatsApp QR Code — scan with your phone  ━━━\n')
+        process.stderr.write(qrArt)
+        process.stderr.write('━━━  Open WhatsApp > Linked Devices > Link a Device  ━━━\n')
+        process.stderr.write('      Rotates every ~20s. Run /whatsapp:configure qr if it expires.\n\n')
+      } catch {
+        // Fall through to the hint below
+      }
 
       // Re-read phone from .env on each QR event so /whatsapp:configure pair
       // takes effect without a server restart.

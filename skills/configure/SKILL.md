@@ -28,7 +28,8 @@ Helper scripts live under the plugin's `scripts/` directory. Resolve the path on
 with a fallback before running any script:
 
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"
+PLUGIN_DIR="${PLUGIN_DIR:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
 ```
 
 If `PLUGIN_DIR` is empty after this, tell the user the plugin may not be installed correctly.
@@ -42,7 +43,8 @@ If `PLUGIN_DIR` is empty after this, tell the user the plugin may not be install
 Resolve `PLUGIN_DIR` (see above), then run the status script in a single call:
 
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"
+PLUGIN_DIR="${PLUGIN_DIR:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
 node --experimental-strip-types "$PLUGIN_DIR/status.ts"
 ```
 
@@ -67,7 +69,8 @@ second command.
 
 **What next** — end with a concrete next step based on the status:
 - `awaiting_qr` with pairing code → show code as above (do not show QR)
-- `awaiting_qr` without pairing code → *"Scan the QR code above with WhatsApp.
+- `awaiting_qr` without pairing code → *"Press Ctrl+O (Cmd+O on Mac) on the Bash output
+  above to expand the QR code, then scan it with WhatsApp.
   If it expired, run `/whatsapp:configure qr` for a fresh one. Alternatively, run
   `/whatsapp:configure pair +5511999999999` to use a pairing code instead."*
 - `disconnected:*` or `logged_out` → *"Restart the channel server, then run
@@ -85,14 +88,18 @@ switching `dmPolicy` to `allowlist` so no new numbers can trigger pairing codes.
 Resolve `PLUGIN_DIR` (see preamble above), then run the QR script in a single call:
 
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"
+PLUGIN_DIR="${PLUGIN_DIR:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
 node --experimental-strip-types "$PLUGIN_DIR/show-qr.ts"
 ```
 
-The script generates a QR code PNG image and prints its path as `QR_IMAGE: <path>`.
-**Use the Read tool to display the PNG image** so the user can scan it directly.
-Show the scan instructions from the script output, then remind:
-- Run `/whatsapp:configure` (no args) to verify connection after scanning.
+The script prints the QR code as UTF-8 block art in stdout (collapsed by default).
+**Do NOT try to re-render or copy the QR code.** Instead, tell the user:
+
+> Press **Ctrl+O** (or **Cmd+O** on Mac) on the Bash output above to expand the full
+> QR code, then scan it with WhatsApp (Linked Devices > Link a Device).
+> Run `/whatsapp:configure` to verify the connection after scanning.
+> QR codes rotate every ~20s — run `/whatsapp:configure qr` for a fresh one if it expires.
 
 ### `pair <phone>` — pairing code flow
 
@@ -114,7 +121,8 @@ Pairing code is an alternative to QR scanning — useful for headless setups.
 Resolve `PLUGIN_DIR` (see preamble above), then run the logout script:
 
 ```bash
-PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
+PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"
+PLUGIN_DIR="${PLUGIN_DIR:-$(dirname "$(find ~/.claude -name status.ts -path '*/whatsapp*/scripts/*' 2>/dev/null | head -1)" 2>/dev/null)}"
 bash "$PLUGIN_DIR/logout.sh"
 ```
 

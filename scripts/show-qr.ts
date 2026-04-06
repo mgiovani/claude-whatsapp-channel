@@ -23,7 +23,11 @@ if (!qrData) {
   process.exit(0)
 }
 
-await QRCode.toFile(QR_IMAGE, qrData, { width: 400, margin: 2 })
+const qrArt = await QRCode.toString(qrData, { type: 'utf8', margin: 2 })
+console.log('')
+console.log(qrArt)
+
+await QRCode.toFile(QR_IMAGE, qrData, { width: 600, margin: 2 })
 
 console.log(`QR_IMAGE: ${QR_IMAGE}`)
 console.log('')
