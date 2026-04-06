@@ -6,8 +6,11 @@ STATE_DIR="${HOME}/.claude/channels/whatsapp"
 
 rm -rf "${STATE_DIR}/auth/"
 rm -rf "${STATE_DIR}/approved/"
+rm -rf "${STATE_DIR}/inbox/"
 rm -f "${STATE_DIR}/state.json" "${STATE_DIR}/qr.txt"
+rm -f "${STATE_DIR}/server.pid"
 rm -f "${STATE_DIR}/lid-mapping.json"
+rm -f "${STATE_DIR}/me.txt" "${STATE_DIR}/status.txt"
 
 # Reset access.json to defaults (clear allowlist, pending pairings)
 if [[ -f "${STATE_DIR}/access.json" ]]; then
