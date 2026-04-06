@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "whatsapp": {
-      "command": "bun",
-      "args": ["run", "--cwd", "${CLAUDE_PLUGIN_ROOT}", "--shell=bun", "--silent", "start"]
+      "command": "node",
+      "args": ["--experimental-strip-types", "./server.ts"]
     }
   }
 }

@@ -2,7 +2,7 @@
 
 # Start Claude Code with the WhatsApp channel loaded for development
 dev:
-	npm install --silent && claude --dangerously-load-development-channels server:whatsapp
+	npm install --silent && claude --plugin-dir . --dangerously-load-development-channels server:whatsapp
 
 # Install dependencies (Node.js runtime; bun is used for testing only)
 install:

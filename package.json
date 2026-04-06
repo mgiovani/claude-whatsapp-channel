@@ -26,6 +26,7 @@
   "type": "module",
   "bin": "./server.ts",
   "scripts": {
+    "dev": "claude --plugin-dir . --dangerously-load-development-channels server:whatsapp",
     "start": "bun install --no-summary && node --experimental-strip-types server.ts",
     "test": "bun test"
   },
