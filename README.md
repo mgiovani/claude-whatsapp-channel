@@ -6,7 +6,7 @@ Built on [Baileys](https://github.com/whiskeysockets/Baileys) (WhatsApp Web mult
 
 ---
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This plugin uses an **unofficial** WhatsApp client (Baileys). This may violate [Meta's Terms of Service](https://www.whatsapp.com/legal/terms-of-service). Account bans are possible. Use only with your own personal account, at low volume, and at your own risk.
 
@@ -19,8 +19,11 @@ For production business use, see the official [WhatsApp Business Cloud API](http
 - **QR code linking** — scan once, session persists across restarts
 - **Pairing code** — headless linking without scanning (`/whatsapp:configure pair <phone>`)
 - **Access control** — allowlist with pairing codes, same pattern as the official Telegram channel
+- **Permission relay** — approve or deny Claude's tool use from WhatsApp via emoji reactions
 - **Group support** — mention-triggered delivery in group chats
+- **Voice transcription** — automatic speech-to-text for voice messages (Groq/OpenAI Whisper)
 - **Media handling** — images auto-downloaded, other attachments on demand
+- **Document replies** — long responses auto-sent as file attachments
 - **Full tool set** — `reply`, `react`, `edit_message`, `download_attachment`
 - **Auto-reconnect** — exponential backoff on disconnects
 
@@ -29,7 +32,6 @@ For production business use, see the official [WhatsApp Business Cloud API](http
 ## Prerequisites
 
 - [Node.js](https://nodejs.org) v22+
-- [Bun](https://bun.sh) v1.0+ (plugin system install path only)
 - Claude Code v2.1.80+
 - A personal WhatsApp account
 
@@ -37,7 +39,7 @@ For production business use, see the official [WhatsApp Business Cloud API](http
 
 ## Installation
 
-### Recommended — plugin system
+### Plugin system (recommended)
 
 Inside a Claude Code session:
 
@@ -52,9 +54,9 @@ Then start Claude with the channel active:
 claude --dangerously-load-development-channels plugin:whatsapp@whatsapp-channel
 ```
 
-> **Why the flag?** Channels are in research preview on an Anthropic-curated allowlist. Community plugins aren't on it, so this flag is required. `--channels` alone will show the channel as "listening" but messages won't arrive.
+> **Why the flag?** Channels are in research preview on an Anthropic-curated allowlist. Community plugins aren't on it, so this flag is required.
 
-### Manual — settings.json
+### Manual (settings.json)
 
 ```bash
 git clone https://github.com/mgiovani/claude-whatsapp-channel
@@ -83,6 +85,8 @@ cd claude-whatsapp-channel
 make dev
 ```
 
+This runs `claude --plugin-dir . --dangerously-load-development-channels server:whatsapp`, loading the plugin from your local checkout with skills and channel active.
+
 ---
 
 ## Setup (one-time)
@@ -96,8 +100,10 @@ In Claude, run:
 ```
 
 A QR code appears in the terminal output. Press **Ctrl+O** (Cmd+O on Mac) to expand it, then scan with WhatsApp:
-- **iOS**: Settings → Linked Devices → Link a Device
-- **Android**: ⋮ → Linked Devices → Link a Device
+- **iOS**: Settings > Linked Devices > Link a Device
+- **Android**: More options > Linked Devices > Link a Device
+
+The script auto-refreshes the QR and detects the connection automatically (polls for 60s).
 
 Alternatively, use a pairing code (no scanning needed):
 
@@ -107,9 +113,9 @@ Alternatively, use a pairing code (no scanning needed):
 
 The session persists across restarts.
 
-### Step 2 — Pair your phone number
+### Step 2 — Approve your number
 
-Send any message from your phone to the linked WhatsApp number. The channel replies with a pairing code:
+Send any message from your phone. The channel replies with a 6-character code:
 
 ```
 Pairing required — run in Claude Code:
@@ -117,11 +123,11 @@ Pairing required — run in Claude Code:
 /whatsapp:access pair a3f9b2
 ```
 
-Run that in Claude Code. You'll receive "Paired! Say hi to Claude." on WhatsApp within ~5 seconds.
+Run that in Claude Code. You'll receive "Paired! Say hi to Claude." on WhatsApp.
 
 ### Step 3 — Lock it down (recommended)
 
-Once your trusted numbers are paired, switch to `allowlist` mode:
+Once your trusted numbers are approved, switch to `allowlist` mode so no new numbers can trigger pairing:
 
 ```
 /whatsapp:access policy allowlist
@@ -131,7 +137,7 @@ Once your trusted numbers are paired, switch to `allowlist` mode:
 
 ## Usage
 
-Send a WhatsApp message from a paired number. Claude receives it as:
+Send a WhatsApp message from an approved number. Claude receives it as:
 
 ```xml
 <channel source="whatsapp" chat_id="5511999999999@s.whatsapp.net"
@@ -140,7 +146,11 @@ Hey Claude, what's the status of the deploy?
 </channel>
 ```
 
-Claude uses the **reply tool** to respond — messages go directly to WhatsApp.
+Claude uses the **reply tool** to respond. Messages go directly to WhatsApp.
+
+### Permission relay
+
+When Claude wants to run a tool, approved contacts receive a WhatsApp message with a 5-letter code. Reply `yes <code>` or `no <code>` to approve or deny. The local terminal dialog stays open as a fallback.
 
 ---
 
@@ -180,17 +190,19 @@ All state lives in `~/.claude/channels/whatsapp/access.json`:
 
 | Command | Description |
 |---------|-------------|
-| `/whatsapp:configure` | Check connection status |
-| `/whatsapp:configure qr` | Display QR code to link your phone |
-| `/whatsapp:configure pair <phone>` | Link via pairing code (auto-generates within seconds) |
+| `/whatsapp:configure` | Check connection status, auto-show QR if awaiting |
+| `/whatsapp:configure qr` | Display QR code with 60s auto-refresh polling |
+| `/whatsapp:configure pair <phone>` | Link via pairing code (auto-generates and polls) |
 | `/whatsapp:configure logout` | Unlink the device and clear auth |
+| `/whatsapp:configure clear` | Remove saved phone number |
+| `/whatsapp:configure transcription <provider>` | Set up voice message transcription (`groq`, `openai`, or `none`) |
 | `/whatsapp:access` | Show current access state |
 | `/whatsapp:access pair <code>` | Approve a pairing request |
 | `/whatsapp:access deny <code>` | Deny a pairing request |
 | `/whatsapp:access allow <jid>` | Add a JID to the allowlist directly |
 | `/whatsapp:access remove <jid>` | Remove a JID from the allowlist |
 | `/whatsapp:access policy <mode>` | Set DM policy: `pairing`, `allowlist`, or `disabled` |
-| `/whatsapp:access group add <groupJid>` | Enable a group (mention-gated by default; `--no-mention` to disable; `--allow jid1,jid2` to restrict senders) |
+| `/whatsapp:access group add <groupJid>` | Enable a group (mention-gated by default; `--no-mention` to disable) |
 | `/whatsapp:access group rm <groupJid>` | Disable a group |
 
 ### Groups
@@ -221,6 +233,16 @@ Optional settings via `/whatsapp:access set`:
 | `documentThreshold` | `4000` | Char length above which replies become a file attachment (`0` = off, `-1` = always) |
 | `documentFormat` | `auto` | Format for document replies: `auto`, `md`, or `txt` |
 
+### Voice transcription
+
+Automatically transcribe inbound voice messages (text is prepended to the notification so Claude sees it without calling `download_attachment`):
+
+```
+/whatsapp:configure transcription groq <GROQ_API_KEY>
+```
+
+Supported providers: `groq` (Whisper Large v3 Turbo, recommended), `openai` (Whisper-1). Disable with `/whatsapp:configure transcription none`.
+
 ---
 
 ## How it works
@@ -234,6 +256,8 @@ Claude Code session
 ```
 
 An MCP server (`server.ts`) maintains a persistent Baileys WebSocket, pushes incoming messages to Claude via `notifications/claude/channel`, and exposes the tools Claude calls to reply.
+
+All runtime state lives in `~/.claude/channels/whatsapp/` (auth session, access control, downloaded media).
 
 ---
 
