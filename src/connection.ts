@@ -211,7 +211,6 @@ export async function connectWhatsApp(hooks: {
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     printQRInTerminal: false,
-    browser: ['Claude Code', 'Chrome', '1.0.0'],
     markOnlineOnConnect: false,        // Don't suppress phone notifications.
     logger,
     cachedGroupMetadata: async () => null,
