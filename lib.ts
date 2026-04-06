@@ -215,6 +215,76 @@ export function chunk(text: string, limit: number, mode: 'length' | 'newline'): 
   return out
 }
 
+// ─── Markdown => WhatsApp formatting ──────────────────────────────────────────
+
+/**
+ * Converts a Markdown-formatted string to WhatsApp-native rich text syntax.
+ * Applied per-chunk in the reply handler, after chunk() splits the text.
+ *
+ * Conversion table:
+ *   **bold** / __bold__  =>  *bold*
+ *   *italic* / _italic_  =>  _italic_  (no change for _italic_, converts *italic*)
+ *   ~~strike~~           =>  ~strike~
+ *   # Heading (any level)=>  *Heading*
+ *   [text](url)          =>  text (url)
+ *   ![alt](url)          =>  alt (url)
+ *   ```lang\ncode```     =>  ```\ncode```  (language hint stripped)
+ *   --- / *** / ___ (HR)  =>  (removed)
+ */
+export function toWhatsAppFormat(text: string): string {
+  if (!text) return text
+
+  // Protect fenced code blocks from inline transformations.
+  // Language hints (```ts, ```python, etc.) are stripped — WhatsApp ignores them.
+  const codeBlocks: string[] = []
+  text = text.replace(/```([^\n`]*)\n([\s\S]*?)```/g, (_match, _lang, content: string) => {
+    codeBlocks.push('```\n' + content + '```')
+    return `\x00CB${codeBlocks.length - 1}\x00`
+  })
+
+  // Protect inline code from inline transformations.
+  const inlineCodes: string[] = []
+  text = text.replace(/`([^`\n]+)`/g, (_match, content: string) => {
+    inlineCodes.push('`' + content + '`')
+    return `\x00IC${inlineCodes.length - 1}\x00`
+  })
+
+  // Headers: # Heading => *Heading* (use placeholder to avoid italic step consuming it)
+  text = text.replace(/^#{1,6}\s+(.+)$/gm, '\x01$1\x01')
+
+  // Links and images: [text](url) / ![alt](url) => text (url)
+  text = text.replace(/!?\[([^\]]*)\]\(([^)]+)\)/g, (_match, label: string, url: string) => {
+    const t = label.trim()
+    return t ? `${t} (${url})` : url
+  })
+
+  // Bold: **text** and __text__ => WA bold placeholder (avoids collision with italic step)
+  text = text.replace(/\*\*([^*\n]+)\*\*/g, '\x01$1\x01')
+  text = text.replace(/__([^_\n]+)__/g, '\x01$1\x01')
+
+  // Italic: *text* (single asterisks remaining after ** consumed) => _text_
+  text = text.replace(/\*([^*\n]+)\*/g, '_$1_')
+
+  // Strikethrough: ~~text~~ => ~text~
+  text = text.replace(/~~([^~\n]+)~~/g, '~$1~')
+
+  // Horizontal rules: standalone --- / *** / ___ => remove
+  text = text.replace(/^(-{3,}|\*{3,}|_{3,})\s*$/gm, '')
+
+  // Restore bold placeholders
+  text = text.replace(/\x01([^\x01]+)\x01/g, '*$1*')
+
+  // Restore inline code and code blocks
+  for (let i = 0; i < inlineCodes.length; i++) {
+    text = text.replace(`\x00IC${i}\x00`, inlineCodes[i])
+  }
+  for (let i = 0; i < codeBlocks.length; i++) {
+    text = text.replace(`\x00CB${i}\x00`, codeBlocks[i])
+  }
+
+  return text
+}
+
 // ─── Map helpers ──────────────────────────────────────────────────────────────
 
 export function storeRecent(id: string, msg: any, map: Map<string, any>, cap: number): void {
@@ -267,7 +337,7 @@ export function gate(
     if (access.dmPolicy === 'disabled') return { action: 'drop', reason: 'disabled' }
     if (jidListIncludes(access.allowFrom, senderId)) return { action: 'deliver', access }
     // If senderId is a LID and we have a resolver, check if its phone JID is allowed.
-    // This handles reconnect scenarios where the in-memory LID→phone cache is empty
+    // This handles reconnect scenarios where the in-memory LID=>phone cache is empty
     // and remoteJidAlt was absent from the message key.
     if (isLidJid(senderId) && resolveJid) {
       const phoneJid = resolveJid(senderId)

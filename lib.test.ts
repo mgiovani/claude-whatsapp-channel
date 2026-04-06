@@ -13,6 +13,7 @@ import {
   getMediaFileName,
   mimeToExt,
   chunk,
+  toWhatsAppFormat,
   storeRecent,
   defaultAccess,
   pruneExpired,
@@ -634,5 +635,149 @@ describe('gate — group policy', () => {
     const { io } = makeIO({ groups: { [groupJid]: { requireMention: false, allowFrom: [sender] } } })
     const result = gate(sender, 'group', groupJid, false, io)
     expect(result.action).toBe('deliver')
+  })
+})
+
+// ─── toWhatsAppFormat ─────────────────────────────────────────────────────────
+
+describe('toWhatsAppFormat', () => {
+  // edge cases
+  test('returns empty string unchanged', () => {
+    expect(toWhatsAppFormat('')).toBe('')
+  })
+
+  test('returns plain text unchanged', () => {
+    expect(toWhatsAppFormat('Hello world')).toBe('Hello world')
+  })
+
+  // bold
+  test('converts **bold** to *bold*', () => {
+    expect(toWhatsAppFormat('**bold**')).toBe('*bold*')
+  })
+
+  test('converts __bold__ to *bold*', () => {
+    expect(toWhatsAppFormat('__bold__')).toBe('*bold*')
+  })
+
+  test('converts bold mid-sentence', () => {
+    expect(toWhatsAppFormat('Hello **world** foo')).toBe('Hello *world* foo')
+  })
+
+  // italic
+  test('converts *italic* to _italic_', () => {
+    expect(toWhatsAppFormat('*italic*')).toBe('_italic_')
+  })
+
+  test('leaves _italic_ unchanged (same in both syntaxes)', () => {
+    expect(toWhatsAppFormat('_italic_')).toBe('_italic_')
+  })
+
+  test('converts *italic* but not **bold**', () => {
+    expect(toWhatsAppFormat('**bold** and *italic*')).toBe('*bold* and _italic_')
+  })
+
+  // nested
+  test('handles nested **_bold italic_**', () => {
+    expect(toWhatsAppFormat('**_bold italic_**')).toBe('*_bold italic_*')
+  })
+
+  // strikethrough
+  test('converts ~~strike~~ to ~strike~', () => {
+    expect(toWhatsAppFormat('~~strikethrough~~')).toBe('~strikethrough~')
+  })
+
+  // headers
+  test('converts h1 to bold', () => {
+    expect(toWhatsAppFormat('# Heading')).toBe('*Heading*')
+  })
+
+  test('converts h2 to bold', () => {
+    expect(toWhatsAppFormat('## Section')).toBe('*Section*')
+  })
+
+  test('converts h6 to bold', () => {
+    expect(toWhatsAppFormat('###### Deep')).toBe('*Deep*')
+  })
+
+  test('does not convert non-header hash', () => {
+    expect(toWhatsAppFormat('#hashtag')).toBe('#hashtag')
+  })
+
+  // links
+  test('converts [text](url) to text (url)', () => {
+    expect(toWhatsAppFormat('[click here](https://example.com)')).toBe('click here (https://example.com)')
+  })
+
+  test('converts image ![alt](url) to alt (url)', () => {
+    expect(toWhatsAppFormat('![logo](https://example.com/img.png)')).toBe('logo (https://example.com/img.png)')
+  })
+
+  test('uses bare url when link label is empty', () => {
+    expect(toWhatsAppFormat('[](https://example.com)')).toBe('https://example.com')
+  })
+
+  // code blocks
+  test('preserves code block content without conversion', () => {
+    const input = '```\n**not bold**\n```'
+    const result = toWhatsAppFormat(input)
+    expect(result).toBe('```\n**not bold**\n```')
+  })
+
+  test('strips language hint from fenced code block', () => {
+    const input = '```typescript\nconst x = 1\n```'
+    const result = toWhatsAppFormat(input)
+    expect(result).toBe('```\nconst x = 1\n```')
+  })
+
+  test('preserves inline code without conversion', () => {
+    expect(toWhatsAppFormat('use `**raw**` here')).toBe('use `**raw**` here')
+  })
+
+  // horizontal rules
+  test('removes --- horizontal rule', () => {
+    expect(toWhatsAppFormat('---')).toBe('')
+  })
+
+  test('removes *** horizontal rule', () => {
+    expect(toWhatsAppFormat('***')).toBe('')
+  })
+
+  test('removes ___ horizontal rule', () => {
+    expect(toWhatsAppFormat('___')).toBe('')
+  })
+
+  // realistic mixed content
+  test('converts a realistic Claude response', () => {
+    const input = [
+      '## Summary',
+      '',
+      'Here is **bold text** and *italic text*.',
+      '',
+      'Use `inline code` and [the docs](https://docs.example.com).',
+      '',
+      '```python',
+      'print("hello")',
+      '```',
+      '',
+      '---',
+      '',
+      '~~deprecated~~',
+    ].join('\n')
+
+    const expected = [
+      '*Summary*',
+      '',
+      'Here is *bold text* and _italic text_.',
+      '',
+      'Use `inline code` and the docs (https://docs.example.com).',
+      '',
+      '```\nprint("hello")\n```',
+      '',
+      '',
+      '',
+      '~deprecated~',
+    ].join('\n')
+
+    expect(toWhatsAppFormat(input)).toBe(expected)
   })
 })
