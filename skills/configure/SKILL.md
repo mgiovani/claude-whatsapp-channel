@@ -47,7 +47,7 @@ lines like `CONNECTION: awaiting_qr`, `DM_POLICY: pairing`, `ALLOWED_COUNT: 1`,
 `PAIRING_CODE: ABCD1234`, etc.
 
 **If the output contains `PAIRING_CODE:` (not `none`)**, display the code prominently
-and give instructions — do NOT run the QR script:
+and give instructions:
 
 > **Your pairing code: `ABCD-1234`**
 >
@@ -57,12 +57,10 @@ and give instructions — do NOT run the QR script:
 >
 > The script is waiting and will detect the connection automatically.
 
-**If the output contains `CONNECTION: awaiting_qr`** (and no pairing code), also run
-the QR subcommand immediately so the user can scan without a second command:
-
-```bash
-node --experimental-strip-types "$SCRIPT" qr
-```
+**If the output contains `CONNECTION: awaiting_qr`** (and no pairing code), the script
+automatically displays the QR code and polls for connection. **If the output contains
+`QR_IMAGE:`**, use the `Read` tool on that file path to display the QR code image
+directly in the Claude Code interface so the user can scan it.
 
 **What next** — end with a concrete next step based on the status:
 - `awaiting_qr` with pairing code → show code as above (do not show QR)
@@ -91,11 +89,8 @@ The script prints the QR code as UTF-8 block art, then **polls for up to 2 minut
 auto-refreshing the QR when it rotates. It prints `CONNECTED: <jid>` on success
 or `TIMEOUT:` if no connection after 60s.
 
-**Do NOT try to re-render or copy the QR code.** Instead, tell the user:
-
-> Press **Ctrl+O** (or **Cmd+O** on Mac) on the Bash output above to expand the full
-> QR code, then scan it with WhatsApp (Linked Devices > Link a Device).
-> The script auto-refreshes the QR and will detect the connection automatically.
+**If the output contains `QR_IMAGE:`**, use the `Read` tool on that file path to display
+the QR code image directly in the Claude Code interface so the user can scan it easily.
 
 If the output contains `CONNECTED:`, confirm success. If `TIMEOUT:`, suggest retrying.
 

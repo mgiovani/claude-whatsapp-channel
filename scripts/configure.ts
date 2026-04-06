@@ -87,6 +87,12 @@ async function status(): Promise<void> {
     } catch {}
   }
   console.log(`PAIRING_PHONE: ${phone || 'none'}`)
+
+  // Auto-display QR when awaiting and no pairing code active
+  if (connStatus === 'awaiting_qr' && !pairingCode) {
+    console.log('')
+    await qr()
+  }
 }
 
 async function renderQr(QRCode: typeof import('qrcode').default): Promise<string> {
@@ -110,8 +116,7 @@ async function qr(): Promise<void> {
   }
 
   console.log('')
-  console.log('')
-  console.log('')
+  console.log('━━━ Scan this QR code ━━━')
   console.log(qrArt)
   console.log(`QR_IMAGE: ${QR_IMAGE}`)
   console.log('')
