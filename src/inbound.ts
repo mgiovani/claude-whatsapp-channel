@@ -252,10 +252,17 @@ export async function handleInbound(msg: any, mcp: Server): Promise<void> {
     }
   }
 
+  // Detect edited messages — the original message ID is in protocolMessage.key.
+  const editedMsgId = msg.message?.protocolMessage?.editedMessage
+    ? msg.message.protocolMessage.key?.id
+    : undefined
+
   const content = quotedPrefix + (
-    text
-    || (transcription ? `[Voice message transcription]\n${transcription}\n\n(Original audio available via download_attachment)` : '')
-    || (imagePath ? '(photo)' : kind ? `(${kind})` : '(message)')
+    editedMsgId ? `[Edited message] ${text}` : (
+      text
+      || (transcription ? `[Voice message transcription]\n${transcription}\n\n(Original audio available via download_attachment)` : '')
+      || (imagePath ? '(photo)' : kind ? `(${kind})` : '(message)')
+    )
   )
 
   // image_path goes in meta only — an in-content annotation is forgeable by any
@@ -271,6 +278,7 @@ export async function handleInbound(msg: any, mcp: Server): Promise<void> {
         user_id: senderId,
         ts: new Date((msg.messageTimestamp as number) * 1000).toISOString(),
         ...(imagePath ? { image_path: imagePath } : {}),
+        ...(editedMsgId ? { edited_message_id: editedMsgId } : {}),
         ...attachmentMeta,
         ...quotedMeta,
       },

@@ -336,6 +336,25 @@ export async function connectWhatsApp(hooks: {
     for (const msg of messages) {
       if (msg.key.fromMe && sentKeys.has(msg.key.id)) continue // Skip channel-sent echoes.
       if (msg.key.remoteJid === 'status@broadcast') continue // Skip status updates.
+      // Skip protocol-only messages (receipts, key distribution, reactions, etc.)
+      // that contain no user-visible content. Allow edits through.
+      const m = msg.message
+      if (!m) continue
+      if (m.protocolMessage) {
+        if (m.protocolMessage.editedMessage) {
+          // Edit: let it through to handleInbound
+        } else {
+          continue // Other protocol messages (receipts, revokes, etc.)
+        }
+      } else {
+        // Skip messages with only protocol/system fields and no actual content.
+        const keys = Object.keys(m)
+        const protocolOnly = keys.every(k =>
+          k === 'messageContextInfo' || k === 'senderKeyDistributionMessage' ||
+          k === 'reactionMessage' || k === 'deviceSentMessage'
+        )
+        if (protocolOnly) continue
+      }
       hooks.onMessage(msg).catch(err =>
         process.stderr.write(`whatsapp channel: handleInbound failed: ${err}\n`),
       )
