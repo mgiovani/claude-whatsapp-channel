@@ -1127,6 +1127,54 @@ const PermissionRequestSchema = z.object({
   }),
 })
 
+function formatPermissionPreview(tool_name: string, input_preview: string): string {
+  let input: Record<string, unknown>
+  try {
+    input = JSON.parse(input_preview) as Record<string, unknown>
+  } catch {
+    const raw = input_preview.length > 400 ? input_preview.slice(0, 400) + '…' : input_preview
+    return `\`\`\`\n${raw}\n\`\`\``
+  }
+
+  const str = (v: unknown, max = 250): string => {
+    const s = String(v ?? '').trim()
+    return s.length > max ? s.slice(0, max) + '…' : s
+  }
+
+  switch (tool_name) {
+    case 'Edit': {
+      const file = str(input.file_path).split('/').pop() ?? str(input.file_path)
+      const oldStr = str(input.old_string, 200)
+      const newStr = str(input.new_string, 200)
+      return `📄 *${file}*\n\n*Before:*\n\`\`\`\n${oldStr}\n\`\`\`\n*After:*\n\`\`\`\n${newStr}\n\`\`\``
+    }
+    case 'Write': {
+      const file = str(input.file_path).split('/').pop() ?? str(input.file_path)
+      const content = str(input.content, 200)
+      return `📄 *${file}*\n\`\`\`\n${content}\n\`\`\``
+    }
+    case 'Bash': {
+      const cmd = str(input.command, 400)
+      return `\`\`\`\n$ ${cmd}\n\`\`\``
+    }
+    case 'Read': {
+      return `📖 ${str(input.file_path)}`
+    }
+    case 'Grep': {
+      const path = input.path ? ` in ${str(input.path)}` : ''
+      return `🔍 \`${str(input.pattern)}\`${path}`
+    }
+    case 'Glob': {
+      const path = input.path ? ` in ${str(input.path)}` : ''
+      return `🔍 \`${str(input.pattern)}\`${path}`
+    }
+    default: {
+      const raw = input_preview.length > 400 ? input_preview.slice(0, 400) + '…' : input_preview
+      return `\`\`\`\n${raw}\n\`\`\``
+    }
+  }
+}
+
 mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
   try {
     await waitForConnection(3000)
@@ -1134,14 +1182,12 @@ mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
     const targets = access.allowFrom.filter(jid => jid.endsWith('@s.whatsapp.net'))
     if (targets.length === 0) return
 
-    const preview = params.input_preview.length > 500
-      ? params.input_preview.slice(0, 500) + '…'
-      : params.input_preview
+    const preview = formatPermissionPreview(params.tool_name, params.input_preview)
     const text =
       `🔐 *Permission Request*\n\n` +
       `Claude wants to run *${params.tool_name}*\n` +
       `${params.description}\n\n` +
-      `\`\`\`\n${preview}\n\`\`\`\n\n` +
+      `${preview}\n\n` +
       `React ✅ to approve or ❌ to deny\n` +
       `_or reply *yes ${params.request_id}* / *no ${params.request_id}*_`
 
