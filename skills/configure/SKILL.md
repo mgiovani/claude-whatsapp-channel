@@ -89,11 +89,9 @@ PLUGIN_DIR="${CLAUDE_PLUGIN_ROOT:-$(dirname "$(find ~/.claude -name status.ts -p
 node --experimental-strip-types "$PLUGIN_DIR/show-qr.ts"
 ```
 
-The script renders the QR code and prints scan instructions. **Output its full
-contents directly in your response inside a code block** (triple backticks) so
-the QR is displayed in full without truncation. Do NOT summarize or truncate it.
-
-After displaying, also remind:
+The script generates a QR code PNG image and prints its path as `QR_IMAGE: <path>`.
+**Use the Read tool to display the PNG image** so the user can scan it directly.
+Show the scan instructions from the script output, then remind:
 - Run `/whatsapp:configure` (no args) to verify connection after scanning.
 
 ### `pair <phone>` — pairing code flow
@@ -106,10 +104,10 @@ Pairing code is an alternative to QR scanning — useful for headless setups.
 3. Read existing `.env` if present; update or add the `WHATSAPP_PHONE=` line,
    preserve other keys. Write back, no quotes around the value.
 4. `chmod 600 ~/.claude/channels/whatsapp/.env`
-5. Tell the user: *"Phone number saved. The channel will request a pairing code on
-   next connection. Run `/whatsapp:configure` to check status. When the code appears,
-   on WhatsApp go to: Linked Devices → Link a Device → Link with phone number instead."*
-6. Note: a session restart or `/reload-plugins` is required for the new phone to take effect.
+5. Tell the user: *"Phone number saved. The server picks it up automatically on the
+   next QR rotation (~20s). Run `/whatsapp:configure` in a moment to see the pairing
+   code. On WhatsApp go to: Linked Devices → Link a Device → Link with phone number
+   instead."*
 
 ### `logout` — unlink the device
 
@@ -164,8 +162,8 @@ notification. Claude sees the transcript immediately without calling `download_a
 ## Implementation notes
 
 - The channels dir might not exist if the server hasn't run yet. Missing = not configured.
-- The server reads `.env` once at boot. Phone changes need a session restart or
-  `/reload-plugins`. Say so after saving.
+- The server re-reads `.env` on each QR rotation. Phone changes take effect
+  automatically within ~20s (no restart needed).
 - `access.json` is re-read on every inbound message — policy changes take effect immediately.
 - QR codes expire quickly (~60s for first, ~20s for subsequent). If scanning fails, re-run
   `/whatsapp:configure qr` to get the next QR.

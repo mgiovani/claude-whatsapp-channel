@@ -36,7 +36,7 @@ import {
   QR_FILE,
   STATE_DIR,
   LOCK_FILE,
-  WHATSAPP_PHONE,
+  ENV_FILE,
 } from './config.ts'
 
 // ─── Shared mutable state ─────────────────────────────────────────────────────
@@ -60,6 +60,19 @@ export const sentKeys = new Map<string, any>()
 // Baileys v7 provides the phone JID in participantAlt / remoteJidAlt when
 // the message is addressed in LID mode.
 export const lidToPhone = new Map<string, string>()
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Re-read WHATSAPP_PHONE from .env at call time (not cached at import). */
+function readPhoneFromEnv(): string | undefined {
+  try {
+    const content = readFileSync(ENV_FILE, 'utf8')
+    const m = content.match(/^WHATSAPP_PHONE=(.+)$/m)
+    return m ? m[1].replace(/\D/g, '') : undefined
+  } catch {
+    return undefined
+  }
+}
 
 // ─── State accessors ──────────────────────────────────────────────────────────
 
@@ -214,26 +227,27 @@ export async function connectWhatsApp(hooks: {
   sock.ev.on('contacts.update', cacheContactLids)
   sock.ev.on('messaging-history.set', ({ contacts }) => cacheContactLids(contacts ?? []))
 
-  let pairingCodeRequested = false
-
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
       mkdirSync(STATE_DIR, { recursive: true })
       writeFileSync(QR_FILE, qr)
       saveState({ ...loadState(), status: 'awaiting_qr' })
-      process.stderr.write('whatsapp channel: QR ready — run /whatsapp:configure qr to display\n')
 
-      // Pairing code flow: if WHATSAPP_PHONE is set, request code instead of QR.
-      if (WHATSAPP_PHONE && !pairingCodeRequested) {
-        pairingCodeRequested = true
+      // Re-read phone from .env on each QR event so /whatsapp:configure pair
+      // takes effect without a server restart.
+      const phone = readPhoneFromEnv()
+
+      if (phone) {
+        // Request a fresh pairing code on each QR rotation (codes expire with the QR).
         try {
-          const digits = WHATSAPP_PHONE.replace(/\D/g, '')
-          const code = await sock!.requestPairingCode(digits)
+          const code = await sock!.requestPairingCode(phone)
           saveState({ ...loadState(), pairingCode: code })
-          process.stderr.write('whatsapp channel: pairing code ready — run /whatsapp:configure to see it\n')
+          process.stderr.write(`whatsapp channel: pairing code ready — run /whatsapp:configure to see it\n`)
         } catch (err) {
           process.stderr.write(`whatsapp channel: pairing code request failed: ${err}\n`)
         }
+      } else {
+        process.stderr.write('whatsapp channel: QR ready — run /whatsapp:configure qr to display\n')
       }
     }
 
@@ -244,6 +258,7 @@ export async function connectWhatsApp(hooks: {
       const myJid = sock!.user?.id ?? ''
       saveState({ status: 'connected', myJid })
       try { rmSync(QR_FILE, { force: true }) } catch {}
+      try { rmSync(QR_FILE.replace('.txt', '.png'), { force: true }) } catch {}
       process.stderr.write(`whatsapp channel: connected as ${myJid}\n`)
     }
 
