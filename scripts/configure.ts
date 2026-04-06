@@ -34,7 +34,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 const POLL_INTERVAL = 2000
-const POLL_TIMEOUT = 60_000
+const POLL_TIMEOUT = 120_000
 
 // ─── Subcommands ─────────────────────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ async function renderQr(QRCode: typeof import('qrcode').default): Promise<string
   if (!existsSync(QR_FILE)) return ''
   const qrData = readFileSync(QR_FILE, 'utf8').trim()
   if (!qrData) return ''
-  const qrArt = await QRCode.toString(qrData, { type: 'utf8', margin: 2 })
+  const qrArt = await QRCode.toString(qrData, { type: 'utf8', margin: 3 })
   await QRCode.toFile(QR_IMAGE, qrData, { width: 600, margin: 2 })
   return qrArt
 }
@@ -110,11 +110,14 @@ async function qr(): Promise<void> {
   }
 
   console.log('')
+  console.log('')
+  console.log('')
   console.log(qrArt)
   console.log(`QR_IMAGE: ${QR_IMAGE}`)
   console.log('')
   console.log('Open WhatsApp > Linked Devices > Link a Device, then scan the QR above.')
   console.log('Waiting for connection (auto-refreshes every ~20s)...')
+  console.log('Run /whatsapp:configure at any time to check connection status.')
 
   let lastQr = existsSync(QR_FILE) ? readFileSync(QR_FILE, 'utf8').trim() : ''
   const deadline = Date.now() + POLL_TIMEOUT
@@ -126,6 +129,7 @@ async function qr(): Promise<void> {
     if ((state.status as string) === 'connected') {
       const jid = (state.myJid as string) ?? ''
       console.log(`\nCONNECTED: ${jid}`)
+      console.log('Run /whatsapp:configure to check status and manage access.')
       return
     }
 
@@ -144,7 +148,7 @@ async function qr(): Promise<void> {
     }
   }
 
-  console.log('\nTIMEOUT: No connection after 60s.')
+  console.log('\nTIMEOUT: No connection after 2 minutes.')
   console.log('Run /whatsapp:configure qr to try again.')
 }
 
@@ -173,6 +177,7 @@ async function pair(phoneArg: string): Promise<void> {
     if ((updated.status as string) === 'connected') {
       const jid = (updated.myJid as string) ?? ''
       console.log(`\nCONNECTED: ${jid}`)
+      console.log('Run /whatsapp:configure to check status and manage access.')
       return
     }
 
@@ -189,7 +194,7 @@ async function pair(phoneArg: string): Promise<void> {
     }
   }
 
-  console.log('\nTIMEOUT: No connection after 60s.')
+  console.log('\nTIMEOUT: No connection after 2 minutes.')
   console.log('Run /whatsapp:configure pair <phone> to try again.')
 }
 

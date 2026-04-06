@@ -103,7 +103,7 @@ A QR code appears in the terminal output. Press **Ctrl+O** (Cmd+O on Mac) to exp
 - **iOS**: Settings > Linked Devices > Link a Device
 - **Android**: More options > Linked Devices > Link a Device
 
-The script auto-refreshes the QR and detects the connection automatically (polls for 60s).
+The script auto-refreshes the QR and detects the connection automatically (polls for 2 minutes).
 
 Alternatively, use a pairing code (no scanning needed):
 
@@ -191,7 +191,7 @@ All state lives in `~/.claude/channels/whatsapp/access.json`:
 | Command | Description |
 |---------|-------------|
 | `/whatsapp:configure` | Check connection status, auto-show QR if awaiting |
-| `/whatsapp:configure qr` | Display QR code with 60s auto-refresh polling |
+| `/whatsapp:configure qr` | Display QR code with 2-minute auto-refresh polling |
 | `/whatsapp:configure pair <phone>` | Link via pairing code (auto-generates and polls) |
 | `/whatsapp:configure logout` | Unlink the device and clear auth |
 | `/whatsapp:configure clear` | Remove saved phone number |

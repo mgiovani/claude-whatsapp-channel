@@ -87,7 +87,7 @@ switching `dmPolicy` to `allowlist` so no new numbers can trigger pairing codes.
 node --experimental-strip-types "$SCRIPT" qr
 ```
 
-The script prints the QR code as UTF-8 block art, then **polls for up to 60s**,
+The script prints the QR code as UTF-8 block art, then **polls for up to 2 minutes**,
 auto-refreshing the QR when it rotates. It prints `CONNECTED: <jid>` on success
 or `TIMEOUT:` if no connection after 60s.
 
@@ -110,7 +110,7 @@ Pairing code is an alternative to QR scanning — useful for headless setups.
 node --experimental-strip-types "$SCRIPT" pair "<raw phone argument>"
 ```
 
-The script saves the phone, waits for the pairing code, then **polls for up to 60s**
+The script saves the phone, waits for the pairing code, then **polls for up to 2 minutes**
 for the connection to complete. It auto-refreshes codes when they rotate.
 
 2. If the output contains `PAIRING_CODE_READY:`, display it prominently:
