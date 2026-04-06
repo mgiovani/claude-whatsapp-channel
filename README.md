@@ -82,13 +82,12 @@ Then add to `~/.claude/settings.json`:
 }
 ```
 
-### Development — dangerously-load-development-channels
+### Development
 
 ```bash
 git clone https://github.com/mgiovani/claude-whatsapp-channel
 cd claude-whatsapp-channel
-npm install
-claude --dangerously-load-development-channels server:whatsapp
+make dev
 ```
 
 ---
@@ -292,10 +291,7 @@ State files in `~/.claude/channels/whatsapp/`:
 
 ## Future providers
 
-The architecture is designed to support additional WhatsApp providers:
-
-- **whatsmeow** (Go) — production-grade, powers mautrix-whatsapp bridge
-- **WhatsApp Business Cloud API** (official) — zero ban risk, for business accounts
+The architecture is designed to support the official [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/) as an alternative provider (zero ban risk, for business accounts).
 
 ---
 

@@ -51,9 +51,8 @@ access.json      Access control (allowlist, pending pairings, groups)
 inbox/           Downloaded media files
 approved/        Signals from /whatsapp:access pair to the running server
 qr.txt           Current QR code string (transient)
-me.txt           Our linked JID (e.g. 5511999999999@s.whatsapp.net)
-status.txt       Connection status (connected/awaiting_qr/logged_out/disconnected:*)
-pairing_code.txt Pairing code from WhatsApp (transient, if using pairing code flow)
+state.json       Connection state (status, linked JID, pairing code)
+server.pid       Lock file (prevents duplicate sessions)
 ```
 
 ## Key design decisions
