@@ -52,6 +52,8 @@ export type MediaKind = 'image' | 'video' | 'audio' | 'document' | 'sticker'
 
 export const MAX_CHUNK_LIMIT = 4096
 export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+/** Default char threshold above which replies are sent as document attachments. Set documentThreshold=0 to disable. */
+export const DEFAULT_DOCUMENT_THRESHOLD = 4000
 
 export const MIME_TO_EXT: Record<string, string> = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
@@ -312,11 +314,14 @@ export function pickDocumentFilename(
     : { name: 'response.txt', mime: 'text/plain' }
 }
 
-/** Returns true when text length triggers the document threshold. */
+/** Returns true when text length triggers the document threshold.
+ *  undefined → use DEFAULT_DOCUMENT_THRESHOLD (enabled by default).
+ *  0 → disabled. -1 → always. */
 export function shouldSendAsDocument(text: string, threshold: number | undefined): boolean {
-  if (!threshold || threshold === 0) return false
-  if (threshold === -1) return true
-  return text.length > threshold
+  const t = threshold ?? DEFAULT_DOCUMENT_THRESHOLD
+  if (t === 0) return false
+  if (t === -1) return true
+  return text.length > t
 }
 
 // ─── Map helpers ──────────────────────────────────────────────────────────────

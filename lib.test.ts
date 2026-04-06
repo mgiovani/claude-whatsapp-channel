@@ -827,8 +827,9 @@ describe('shouldSendAsDocument', () => {
     expect(shouldSendAsDocument('x'.repeat(10000), 0)).toBe(false)
   })
 
-  test('returns false when threshold is undefined (disabled by default)', () => {
-    expect(shouldSendAsDocument('x'.repeat(10000), undefined)).toBe(false)
+  test('uses DEFAULT_DOCUMENT_THRESHOLD (4000) when threshold is undefined', () => {
+    expect(shouldSendAsDocument('x'.repeat(4001), undefined)).toBe(true)
+    expect(shouldSendAsDocument('x'.repeat(100), undefined)).toBe(false)
   })
 
   test('returns true when threshold is -1 (always)', () => {
