@@ -42,12 +42,13 @@ For production business use, consider the official [WhatsApp Business Cloud API]
 
 ## Installation
 
-### Recommended — plugin system (2 commands)
+### Recommended — plugin system
 
 Inside a Claude Code session:
 
 ```
-/plugin install whatsapp@https://github.com/mgiovani/claude-whatsapp-channel
+/plugin marketplace add mgiovani/claude-whatsapp-channel
+/plugin install whatsapp@mgiovani-claude-whatsapp-channel
 /reload-plugins
 ```
 
