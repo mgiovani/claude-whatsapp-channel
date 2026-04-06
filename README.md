@@ -4,6 +4,21 @@
 
 Built on [Baileys](https://github.com/whiskeysockets/Baileys) (WhatsApp Web multi-device API). Mirrors the architecture of the [official Telegram and Discord channels](https://github.com/anthropics/claude-plugins-official).
 
+<p align="center">
+  <img src="assets/screenshot-hero.png" alt="WhatsApp channel for Claude Code — side-by-side view" width="800">
+</p>
+
+<details>
+<summary>More screenshots</summary>
+
+### Chat with Claude via WhatsApp
+<img src="assets/screenshot-chat.png" alt="WhatsApp chat with Claude Code channel" width="800">
+
+### QR code setup
+<img src="assets/screenshot-qr.png" alt="QR code linking via /whatsapp:configure" width="800">
+
+</details>
+
 ---
 
 ## Disclaimer
@@ -99,11 +114,15 @@ In Claude, run:
 /whatsapp:configure
 ```
 
-A QR code appears in the terminal output. Press **Ctrl+O** (Cmd+O on Mac) to expand it, then scan with WhatsApp:
+A QR code appears in the terminal output and the QR image opens in your system viewer. You can also:
+- Press **Ctrl+O** (Cmd+O on Mac) to expand the QR in the terminal
+- Run `cat /tmp/whatsapp-qr.txt` in another terminal to see the full QR
+
+Scan the QR with WhatsApp:
 - **iOS**: Settings > Linked Devices > Link a Device
 - **Android**: More options > Linked Devices > Link a Device
 
-The script auto-refreshes the QR and detects the connection automatically (polls for 2 minutes).
+The QR expires in ~60s. Run `/whatsapp:configure qr` for a fresh one if needed.
 
 Alternatively, use a pairing code (no scanning needed):
 
@@ -191,7 +210,7 @@ All state lives in `~/.claude/channels/whatsapp/access.json`:
 | Command | Description |
 |---------|-------------|
 | `/whatsapp:configure` | Check connection status, auto-show QR if awaiting |
-| `/whatsapp:configure qr` | Display QR code with 2-minute auto-refresh polling |
+| `/whatsapp:configure qr` | Display QR code (saved to `/tmp/whatsapp-qr.txt`) |
 | `/whatsapp:configure pair <phone>` | Link via pairing code (auto-generates and polls) |
 | `/whatsapp:configure logout` | Unlink the device and clear auth |
 | `/whatsapp:configure clear` | Remove saved phone number |
