@@ -48,6 +48,7 @@ let reconnectAttempt = 0
 let replaceCount = 0
 let shuttingDown = false
 let channelMode = false
+let cachedVersion: number[] | undefined
 
 // Recent inbound messages — needed for media download, reactions, and quoting.
 // Keyed by message ID, capped to prevent unbounded growth.
@@ -203,7 +204,8 @@ export async function connectWhatsApp(hooks: {
   mkdirSync(AUTH_DIR, { recursive: true, mode: 0o700 })
 
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
-  const { version } = await fetchLatestBaileysVersion()
+  if (!cachedVersion) cachedVersion = (await fetchLatestBaileysVersion()).version
+  const version = cachedVersion
 
   const logger = pino({ level: 'silent' }) // Silence Baileys internal noise.
 
